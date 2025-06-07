@@ -5,18 +5,17 @@ import pkg from 'pg';
 
 const { Pool } = pkg;
 const app = express();
-const port = 5000;
+const port = process.env.PORT || 5000;
 
 app.use(bodyParser.json());
 app.use(cors());
 
 
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'SDapp',
-  password: 'Karthik@2812',
-  port: 5432
+  connectionString: 'postgresql://postgres:LNSMJexhldSybrJRBFzyKfoqHPhNjjjw@switchyard.proxy.rlwy.net:33750/railway',
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 app.get('/api/data', async (req, res) => {
