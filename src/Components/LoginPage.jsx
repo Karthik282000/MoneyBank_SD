@@ -14,7 +14,7 @@ function LoginPage({ onLogin }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:5000/api/login', { email, password });
+      const response = await axios.post('https://moneybank-sd.onrender.com/api/login', { email, password });
       if (response.data.success) {
         onLogin(email);
       } else {
@@ -36,7 +36,7 @@ function LoginPage({ onLogin }) {
       return;
     }
     try {
-      const response = await axios.post('http://localhost:5000/api/add-user', newUser);
+      const response = await axios.post('https://moneybank-sd.onrender.com/api/add-user', newUser);
       if (response.data.success) {
         alert('New user added successfully!');
         setNewUser({ email: '', password: '' });
@@ -60,7 +60,7 @@ function LoginPage({ onLogin }) {
       return;
     }
     try {
-      const response = await axios.post('http://localhost:5000/api/update-user', updateUser);
+      const response = await axios.post('https://moneybank-sd.onrender.com/api/update-user', updateUser);
       if (response.data.success) {
         alert('User updated successfully!');
         setUpdateUser({ email: '', password: '' });

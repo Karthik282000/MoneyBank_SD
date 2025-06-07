@@ -26,7 +26,7 @@ function FormComponent() {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/data');
+      const response = await axios.get('https://moneybank-sd.onrender.com/api/data');
       setAllData(response.data);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -35,7 +35,7 @@ function FormComponent() {
 
   const fetchFinancialYear = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/get-financial-year');
+      const response = await axios.get('https://moneybank-sd.onrender.com/api/get-financial-year');
       setFormData(prev => ({
         ...prev,
         yearOfPayment: response.data.yearOfPayment.toString()
@@ -129,7 +129,7 @@ function FormComponent() {
 
   const handleToggleInactive = async () => {
     try {
-      await axios.post('http://localhost:5000/api/update-customer-state', {
+      await axios.post('https://moneybank-sd.onrender.com/api/update-customer-state', {
         houseNo: formData.houseNo,
         newState: 'inactive'
       });
@@ -155,7 +155,7 @@ function FormComponent() {
         utrNumber: formData.utrNumber,
         referenceDetails: formData.referenceDetails
       };
-      await axios.post('http://localhost:5000/api/save-transaction', payload);
+      await axios.post('https://moneybank-sd.onrender.com/api/save-transaction', payload);
       alert('Transaction and details saved successfully!');
       fetchData();
       resetForm();
@@ -177,7 +177,7 @@ function FormComponent() {
         utrNumber: formData.utrNumber,
         referenceDetails: formData.referenceDetails
       };
-      await axios.post('http://localhost:5000/api/create-new-house', payload);
+      await axios.post('https://moneybank-sd.onrender.com/api/create-new-house', payload);
       alert('New house entry and transaction created successfully!');
       fetchData();
       resetForm();

@@ -18,7 +18,7 @@ function SearchPeople() {
 
   const fetchSubscribers = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/subscribers');
+      const response = await axios.get('https://moneybank-sd.onrender.com/api/subscribers');
       setSubscribers(response.data);
     } catch (error) {
       console.error('Error fetching subscribers:', error);
@@ -27,7 +27,7 @@ function SearchPeople() {
 
   const fetchAllData = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/all-data');
+      const response = await axios.get('https://moneybank-sd.onrender.com/api/all-data');
       setAllData(response.data);
     } catch (error) {
       console.error('Error fetching all data:', error);
