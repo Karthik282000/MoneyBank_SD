@@ -74,3 +74,9 @@
 .update-user-container > div {
   margin-bottom: 15px; /* Adjust spacing here */
 }
+
+/* makes the check-box line wrap nicely */
+.block-checkboxes > label {
+  margin-right: 12px;
+  cursor: pointer;
+}

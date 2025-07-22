@@ -2,7 +2,7 @@
   "name": "moneybank",
   "version": "0.1.0",
   "private": true,
-  "type":"module",
+  "type": "module",
   "dependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -10,12 +10,16 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.8.4",
     "body-parser": "^1.20.3",
+    "canvas": "^3.1.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "nodemailer": "^7.0.5",
     "pg": "^8.15.5",
+    "puppeteer": "^24.14.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-scripts": "5.0.1",
+    "recharts": "^3.1.0",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

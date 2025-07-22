@@ -2,109 +2,156 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import './LoginPage.css';
+import {API_BASE_URL} from './Constants.jsx'
 
-function LoginPage({ onLogin }) {
+const BLOCK_OPTIONS = ['A', 'B', 'C', 'D', 'ALLBLOCKS'];
+
+
+export default function LoginPage({ onLogin }) {
+  /** active tab ---------------------------------------------------------------- */
   const [activeTab, setActiveTab] = useState('login');
+
+  /** login state ---------------------------------------------------------------- */
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [masterPassword, setMasterPassword] = useState('');
-  const [newUser, setNewUser] = useState({ email: '', password: '' });
-  const [updateUser, setUpdateUser] = useState({ email: '', password: '' });
 
-  const handleLogin = async (e) => {
+  /** admin stuff (master password + add / update) ------------------------------- */
+  const [masterPassword, setMasterPassword] = useState('');
+  const [newUser, setNewUser] = useState({ email: '', password: '', blocks: [] });
+  const [updateUser, setUpdateUser] = useState({
+    email: '',
+    password: '',
+    blocks: [],
+  });
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /* helpers                                                                     */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+   const toggleBlock = setter => option => {
+    setter(prev => {
+      let nextBlocks = prev.blocks.includes(option)
+        ? prev.blocks.filter(b => b !== option)
+        : [...prev.blocks, option];
+
+      if (nextBlocks.includes('ALLBLOCKS') && nextBlocks.length > 1) {
+        nextBlocks = ['ALLBLOCKS'];
+      }
+      if (option !== 'ALLBLOCKS' && nextBlocks.includes('ALLBLOCKS')) {
+        nextBlocks = nextBlocks.filter(b => b !== 'ALLBLOCKS');
+      }
+
+      return { ...prev, blocks: nextBlocks };
+    });
+  };
+
+  const isAdmin = () => masterPassword === 'masterpassword123';
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /* LOGIN                                                                       */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+const handleLogin = async e => {
     e.preventDefault();
     try {
-      const response = await axios.post('https://moneybank-sd.onrender.com/api/login', { email, password });
-      if (response.data.success) {
-        onLogin(email);
+      const { data } = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
+      if (data.success) {
+        localStorage.setItem('allowedBlocks', JSON.stringify(data.allowedBlocks ?? []));
+        onLogin(email, data.allowedBlocks ?? []);
       } else {
-        alert('Invalid credentials. Please try again or click on add user to add the user of your choice');
+        alert('Invalid credentials. Please try again or add the user via "Add User".');
       }
-    } catch (error) {
-      console.error('Login error:', error);
+    } catch (err) {
+      console.error('Login error:', err);
       alert('Error logging in. Please try again.');
     }
   };
 
-  const handleAddUser = async () => {
-    if (masterPassword !== 'masterpassword123') {
-      alert('Incorrect master password.');
-      return;
-    }
-    if (!newUser.email || !newUser.password) {
-      alert('Please enter both email and password.');
-      return;
-    }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /* ADD USER                                                                    */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+ const handleAddUser = async () => {
+    if (!isAdmin()) return alert('Incorrect master password.');
+    if (!newUser.email || !newUser.password) return alert('Please enter both email and password.');
+    if (newUser.blocks.length === 0) return alert('Select at least one block (or ALLBLOCKS).');
+
     try {
-      const response = await axios.post('https://moneybank-sd.onrender.com/api/add-user', newUser);
-      if (response.data.success) {
-        alert('New user added successfully!');
-        setNewUser({ email: '', password: '' });
+      const { data } = await axios.post(`${API_BASE_URL}/api/add-user`, {
+        email: newUser.email,
+        password: newUser.password,
+        blocks: newUser.blocks
+      });
+      if (data.success) {
+        alert('User created!');
+        setNewUser({ email: '', password: '', blocks: [] });
         setMasterPassword('');
       } else {
-        alert('Failed to add user.');
+        alert(data.message || 'Failed to add user.');
       }
     } catch (err) {
-      console.error('Error adding user:', err);
-      alert('Error adding user.');
+      console.error('add-user error', err);
+      alert('Server error while adding user.');
     }
   };
 
-  const handleUpdateUser = async () => {
-    if (masterPassword !== 'masterpassword123') {
-      alert('Incorrect master password.');
-      return;
-    }
-    if (!updateUser.email || !updateUser.password) {
-      alert('Please enter both email and new password.');
-      return;
-    }
+
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /* UPDATE USER                                                                 */
+  /* ──────────────────────────────────────────────────────────────────────────── */
+   const handleUpdateUser = async () => {
+    if (!isAdmin()) return alert('Incorrect master password.');
+    if (!updateUser.email || !updateUser.password) return alert('Please enter email + new password.');
+    if (updateUser.blocks.length === 0) return alert('Select at least one block (or ALLBLOCKS).');
+
     try {
-      const response = await axios.post('https://moneybank-sd.onrender.com/api/update-user', updateUser);
-      if (response.data.success) {
-        alert('User updated successfully!');
-        setUpdateUser({ email: '', password: '' });
+      const { data } = await axios.post(`${API_BASE_URL}/api/update-user`, {
+        email: updateUser.email,
+        password: updateUser.password,
+        blocks: updateUser.blocks
+      });
+      if (data.success) {
+        alert('User updated.');
+        setUpdateUser({ email: '', password: '', blocks: [] });
         setMasterPassword('');
       } else {
-        alert('Failed to update user.');
+        alert(data.message || 'Failed to update user.');
       }
     } catch (err) {
-      console.error('Error updating user:', err);
-      alert('Error updating user.');
+      console.error('update-user error', err);
+      alert('Server error while updating user.');
     }
   };
 
+  /* ──────────────────────────────────────────────────────────────────────────── */
+  /* RENDER                                                                      */
+  /* ──────────────────────────────────────────────────────────────────────────── */
   return (
     <div className="login-container">
       <h2>Welcome</h2>
+
+      {/* ---------------------------- tabs ------------------------------------ */}
       <div className="button-group">
-        <button
-          className={activeTab === 'login' ? 'active' : ''}
-          onClick={() => setActiveTab('login')}
-        >
-          Login
-        </button>
-        <button
-          className={activeTab === 'add' ? 'active' : ''}
-          onClick={() => setActiveTab('add')}
-        >
-          Add User
-        </button>
-        <button
-          className={activeTab === 'update' ? 'active' : ''}
-          onClick={() => setActiveTab('update')}
-        >
-          Update User
-        </button>
+        {['login', 'add', 'update'].map(tab => (
+          <button
+            key={tab}
+            className={activeTab === tab ? 'active' : ''}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab === 'login'
+              ? 'Login'
+              : tab === 'add'
+              ? 'Add User'
+              : 'Update User'}
+          </button>
+        ))}
       </div>
 
+      {/* ---------------------------- LOGIN ----------------------------------- */}
       {activeTab === 'login' && (
         <form onSubmit={handleLogin}>
           <div>
             <label>Email:</label>
             <input
               type="email"
-              placeholder="Enter your email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -114,7 +161,6 @@ function LoginPage({ onLogin }) {
             <label>Password:</label>
             <input
               type="password"
-              placeholder="Enter your password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
@@ -124,79 +170,122 @@ function LoginPage({ onLogin }) {
         </form>
       )}
 
+      {/* ---------------------------- ADD USER -------------------------------- */}
       {activeTab === 'add' && (
-        <div className="add-user-container">
+        <section className="add-user-container">
           <h3>Add New User</h3>
+
           <div>
             <label>Master Password:</label>
             <input
               type="password"
-              placeholder="Enter master password"
               value={masterPassword}
               onChange={e => setMasterPassword(e.target.value)}
             />
           </div>
+
           <div>
-            <label>New User Email:</label>
+            <label>Email:</label>
             <input
               type="email"
-              placeholder="Enter new user email"
               value={newUser.email}
-              onChange={e => setNewUser(prev => ({ ...prev, email: e.target.value }))}
+              onChange={e =>
+                setNewUser(prev => ({ ...prev, email: e.target.value }))
+              }
             />
           </div>
+
           <div>
-            <label>New User Password:</label>
+            <label>Password:</label>
             <input
               type="password"
-              placeholder="Enter new user password"
               value={newUser.password}
-              onChange={e => setNewUser(prev => ({ ...prev, password: e.target.value }))}
+              onChange={e =>
+                setNewUser(prev => ({ ...prev, password: e.target.value }))
+              }
             />
           </div>
-          <button type="button" onClick={handleAddUser}>
-            Create User
-          </button>
-        </div>
+
+          {/* block check-boxes */}
+          <div className="block-checkboxes">
+            <label style={{ display: 'block' }}>Allowed Blocks:</label>
+            {BLOCK_OPTIONS.map(opt => (
+              <label key={opt}>
+                <input
+                  type="checkbox"
+                  checked={newUser.blocks.includes(opt)}
+                  onChange={() => toggleBlock(setNewUser)(opt)}
+                  disabled={
+                    newUser.blocks.includes('ALLBLOCKS') && opt !== 'ALLBLOCKS'
+                  }
+                />
+                {opt}
+              </label>
+            ))}
+          </div>
+
+          <button onClick={handleAddUser}>Create User</button>
+        </section>
       )}
 
+      {/* ---------------------------- UPDATE USER ----------------------------- */}
       {activeTab === 'update' && (
-        <div className="update-user-container">
+        <section className="update-user-container">
           <h3>Update User</h3>
+
           <div>
             <label>Master Password:</label>
             <input
               type="password"
-              placeholder="Enter master password"
               value={masterPassword}
               onChange={e => setMasterPassword(e.target.value)}
             />
           </div>
+
           <div>
             <label>New Email:</label>
             <input
               type="email"
-              placeholder="Enter new email"
               value={updateUser.email}
-              onChange={e => setUpdateUser(prev => ({ ...prev, email: e.target.value }))}
+              onChange={e =>
+                setUpdateUser(prev => ({ ...prev, email: e.target.value }))
+              }
             />
           </div>
+
           <div>
             <label>New Password:</label>
             <input
               type="password"
-              placeholder="Enter new password"
               value={updateUser.password}
-              onChange={e => setUpdateUser(prev => ({ ...prev, password: e.target.value }))}
+              onChange={e =>
+                setUpdateUser(prev => ({ ...prev, password: e.target.value }))
+              }
             />
           </div>
-          <button type="button" onClick={handleUpdateUser}>
-            Update User
-          </button>
-        </div>
+
+          {/* block check-boxes */}
+          <div className="block-checkboxes">
+            <label style={{ display: 'block' }}>Allowed Blocks:</label>
+            {BLOCK_OPTIONS.map(opt => (
+              <label key={opt}>
+                <input
+                  type="checkbox"
+                  checked={updateUser.blocks.includes(opt)}
+                  onChange={() => toggleBlock(setUpdateUser)(opt)}
+                  disabled={
+                    updateUser.blocks.includes('ALLBLOCKS') &&
+                    opt !== 'ALLBLOCKS'
+                  }
+                />
+                {opt}
+              </label>
+            ))}
+          </div>
+
+          <button onClick={handleUpdateUser}>Update User</button>
+        </section>
       )}
     </div>
   );
 }
-
-export default LoginPage;
