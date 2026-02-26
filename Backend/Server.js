@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import pkg from 'pg';
 import nodemailer from 'nodemailer';
+import axios from 'axios';
 import puppeteer from 'puppeteer';
 
 
@@ -15,7 +16,7 @@ app.use(cors());
 
 
 const pool = new Pool({
-  connectionString: 'postgresql://sd_app_database_user:boyfzrYD9qnJVRNsTXYsFaJNio83JWU5@dpg-d1vpf32dbo4c73fonq50-a.oregon-postgres.render.com/sd_app_database',
+  connectionString: 'postgresql://postgres:XsPMpWWepOgNFyOghdChoCEzJEEsOhTu@nozomi.proxy.rlwy.net:31144/railway',
   ssl: {
     rejectUnauthorized: false,
   },
@@ -32,12 +33,47 @@ const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: 'sdapp2025@gmail.com',      // <-- CHANGE THIS
-    pass: 'tsnp xxjh xmce qket'          // <-- CHANGE THIS
+    pass:  'vvym ntxl rhxi tuzl'       // <-- CHANGE THIS
   },
  tls: {
     rejectUnauthorized: false
   }
 });
+
+const WHATSAPP_PHONE_NUMBER_ID = '825611950625039';
+const WHATSAPP_TOKEN = 'EAFaDzMhQxQwBPCMSdDu2nZCkV5KKVpGZAltXkZCPd3I0lDELlHfncH3PnDcbtUZCZA1B0vMuiZC0hnehxwdM1P2nbfoXUdCfI41oYyLOrv6PDyP9MEIPY485dDOFnoUvdxZB9ZCGGQOLeHYmoHaKqL6sJlD7juDxl7T3fdopVcmUrXq69iNFHxWjXReD7RQtxcKZC9itkwUJC6uM4p7u278ItdWZB30GYO2f4pBg8BEM40rI7XV24ZD'; // Use env var ideally
+const WHATSAPP_TEMPLATE_NAME = 'receipt_notification_'; // Update to your approved template name
+const WHATSAPP_LANG_CODE = 'en_US'; // Template language
+
+
+async function getOrCreateReceiptNo(client, houseno, name) {
+  // 1. Check if mapping exists
+  const existing = await client.query(
+    'SELECT receipt_no FROM ReceiptMapping WHERE houseno = $1 AND name = $2',
+    [houseno, name]
+  );
+  if (existing.rows.length > 0) return existing.rows[0].receipt_no;
+
+  // 2. Get max current receipt_no, generate next (always at least 100001)
+  const res = await client.query('SELECT MAX(receipt_no) AS max_receipt FROM ReceiptMapping');
+  let nextNum = 100001; // Start at 100001
+  if (res.rows[0].max_receipt) {
+    const currentNum = parseInt(res.rows[0].max_receipt.replace('E-', ''), 10);
+    nextNum = Math.max(currentNum + 1, 100001); // Always at least 100001
+  }
+  if (nextNum > 999999) throw new Error('Receipt number overflow');
+  const nextReceiptNo = `E-${nextNum.toString().padStart(6, '0')}`;  // <-- 6 digits
+
+  // 3. Insert new mapping
+  await client.query(
+    'INSERT INTO ReceiptMapping (houseno, name, receipt_no) VALUES ($1, $2, $3)',
+    [houseno, name, nextReceiptNo]
+  );
+  return nextReceiptNo;
+}
+
+
+
 
 function buildMailHtml(formData) {
   return `
@@ -60,6 +96,7 @@ function buildMailHtml(formData) {
 }
 
 function buildReceiptHtml(receiptData = {}) {
+  // For inline PDF rendering, styles must be as close as possible
   return `
 <!DOCTYPE html>
 <html>
@@ -67,111 +104,103 @@ function buildReceiptHtml(receiptData = {}) {
   <meta charset="utf-8">
   <title>Receipt</title>
   <style>
-    html, body {
-      background: #fffbe7;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      -webkit-print-color-adjust: exact;
-      color-adjust: exact;
+    body {
+      background: #fff;
+      font-family: 'Georgia', Times, serif;
+      color: #0033cc;
+      margin: 0; padding: 0;
     }
     .receipt-container {
-      background: #fffbe7;
-      border: 2px solid #e7d183;
-      border-radius: 16px;
-      max-width: 600px;
-      padding: 22px 18px 12px 18px;
+      border: 2px dashed #0033cc;
       margin: 30px auto;
-      box-sizing: border-box;
-      box-shadow: 0 2px 10px #e3dfb6;
+      padding: 24px 28px 18px 28px;
+      max-width: 750px;
+      background: #fff;
+      font-size: 1.12em;
+      position: relative;
     }
-    .receipt-header { text-align: center; margin-bottom: 4px; }
+    .receipt-header { text-align: center; margin-bottom: 6px; }
     .receipt-title {
-      color: #db621e; font-size: 2.1em; font-weight: 700;
-      font-family: 'Georgia', serif; letter-spacing: 1px; margin-bottom: 0.1em;
+      font-size: 2.0em; font-weight: 700; letter-spacing: 1px; margin-bottom: 0.14em; color: #0033cc;
     }
-    .receipt-org { font-weight: 600; font-size: 1.1em; }
-    .receipt-org-main { display: block; color: #1846b1; font-size: 1.07em; font-weight: 700; }
-    .receipt-org-address { font-size: 1.02em; margin-bottom: 8px; }
-    .receipt-hr { border: none; border-top: 1.5px solid #cbbf8f; margin: 4px 0 18px 0; }
-    .receipt-row-flex { display: flex; justify-content: space-between; font-size: 1.15em; font-weight: 600; margin-bottom: 9px; max-width: 95%; }
-    .receipt-label { font-size: 1.10em; color: #6a5408; font-weight: 700; margin: 9px 0 3px 0; }
-    .receipt-value { color: #252324; font-weight: 600; margin-left: 4px; }
-    .receipt-bold-indented { margin-left: 4px; color: #383006; font-weight: 700; }
-    .receipt-field { margin: 5px 0 0 0; font-size: 1.07em; font-weight: 700; color: #6a5408; }
-    .receipt-purpose { margin: 22px 0 7px 0; font-size: 1.04em; color: #85724a; font-style: italic; text-align: center; line-height: 1.5; }
-    .receipt-bottom-table { width: 100%; margin-top: 35px; font-size: 1.07em; color: #3d3635; }
-    .receipt-bottom-table td { padding: 3px 12px 2px 8px; vertical-align: top; }
-    .receipt-bottom-table th { font-weight: 700; text-align: left; color: #004186; padding-bottom: 2px;}
-    .receipt-sign { text-align: right; margin-top: 15px; font-size: 1.18em; color: #ccb043; font-weight: 600; }
-    .receipt-sign span { color: #e6b30f; font-weight: 800; }
+    .receipt-org-main { color: #0033cc; font-weight: 700; font-size: 1.17em; }
+    .receipt-org { font-style: italic; color: #0033cc; font-size: 1.1em; }
+    .receipt-org-address { font-size: 1em; color: #0033cc; margin-bottom: 8px; }
+    .receipt-row-top { display:flex; justify-content:space-between; margin-bottom: 8px; }
+    .receipt-label { font-style:italic; margin-bottom:4px; }
+    .receipt-bold { font-weight:700; color: #0033cc; }
+    .receipt-value { color: #333; font-weight:600; }
+    .rupee-box {
+      border: 2px solid #0033cc; border-radius: 8px; width: 110px;
+      text-align: center; padding: 6px 0; font-size: 1.18em; font-weight: bold;
+      margin: 10px 0 6px 0; background: #fff;
+    }
+    .sign-row { display:flex; justify-content:space-between; align-items:end; margin-top:36px; font-size:1em;}
+    .sign-col { text-align:center; }
+    .sign-role { font-style:italic; color:#0033cc; }
+    /* Optional watermark/stamp */
+    .stamp {
+      position: absolute;
+      left: 44%; top: 21%; width: 130px; opacity: 0.16; z-index:2;
+    }
   </style>
 </head>
 <body>
   <div class="receipt-container">
+    <div class="receipt-row-top">
+      <div><b>No.</b> <span class="receipt-value">${receiptData.receiptNo || ""}</span></div>
+      <div><b>Date:</b> <span class="receipt-value">${receiptData.date || ""}</span></div>
+    </div>
     <div class="receipt-header">
-      <div class="receipt-title">Sarbojanin Durgotsab 2025</div>
-      <div class="receipt-org">
-        Organised by:
-        <span class="receipt-org-main">Lake Gardens People's Association</span>
-      </div>
-      <div class="receipt-org-address">
-        At Bangur Park, B-202, Lake Gardens, Kolkata - 700 045
-      </div>
+      <div class="receipt-title">Sarbojanin Durgotsab, 2025</div>
+      <div class="receipt-org">Organised by :</div>
+      <div class="receipt-org-main">SARBOJANIN DURGOTSAB COMMITTEE, LAKE GARDENS</div>
+      <div class="receipt-org-main">Lake Gardens People’s Association</div>
+      <div class="receipt-org-address">At Bangur Park, B-202 Lake Gardens, Kolkata - 700 045</div>
     </div>
-    <hr class="receipt-hr" />
-    <div class="receipt-row-flex">
-      <div>Receipt No: <span style="color:#383006;font-weight:700;">${receiptData.receiptNo || '[To be assigned]'}</span></div>
-      <div>Date: <span style="color:#383006;font-weight:700;">${receiptData.date || ''}</span></div>
+    <hr style="border:none;border-top:1.5px solid #0033cc; margin: 13px 0 9px 0;" />
+    <div class="receipt-label">
+      Received with thanks from <span class="receipt-value">${receiptData.name || ""}</span>
     </div>
     <div class="receipt-label">
-      Received with thanks from: <span class="receipt-value">${receiptData.name || ''}</span>
-    </div>
-    <div class="receipt-label" style="color:#524006;">
-      Of <span style="font-weight:600;color:#17395a;">${receiptData.address || ''}</span>
+      of <span class="receipt-value">${receiptData.address || ""}</span>
     </div>
     <div class="receipt-label">
-      The sum of Rupees:<span class="receipt-bold-indented">${receiptData.amountWords || ''} only</span>
+      The sum of Rupees <span class="receipt-value">${receiptData.amountWords || ""} only</span>
     </div>
-    <div class="receipt-row-flex" style="margin-top:6px;">
-      <div>Amount (₹): <span style="color:#222;font-weight:700;">${receiptData.amountFigure || ''}</span></div>
-      <div>Mode: <span style="color:#222;font-weight:700;">${receiptData.paymentMode || ''}</span></div>
+    <div class="receipt-label">
+      by <span class="receipt-value">${receiptData.paymentMode || ""}</span>
+      ${receiptData.chequeOrDDNo ? ` | Ref/UTR No: <span class="receipt-value">${receiptData.chequeOrDDNo}</span>` : ""}
     </div>
-    ${receiptData.chequeOrDDNo ? `
-      <div class="receipt-field">
-        Reference/UTR No: <span style="color:#17395a;font-weight:600;">${receiptData.chequeOrDDNo}</span>
+    <div class="receipt-label">
+      as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2025.
+    </div>
+    <div class="rupee-box">
+      ₹ ${receiptData.amountFigure || ""}
+    </div>
+    <!-- Stamp overlay (optional) -->
+    <!-- <img class="stamp" src="file:///absolute/path/to/stamp.png" /> -->
+    <div class="sign-row">
+      <div class="sign-col">
+        <b>Sarbani Basu Roy</b><br>
+        <span class="sign-role">President</span>
       </div>
-    ` : ""}
-    <div class="receipt-purpose">
-      as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2024
-    </div>
-
-    <!-- Committee Table Section (matches original receipt) -->
-    <table class="receipt-bottom-table"> 
-      <tr style="font-size:0.97em;color:#6d5e48;">
-        <td>President</td>
-        <td>Working President</td>
-        <td>Chief Patron</td>
-        <td>Jt. General Secretary</td>
-        <td>Treasurer</td>
-        <td>Collector</td>
-      </tr>
-       <tr>
-        <th>Saurabh Nag</th>
-        <th>Debojyoti Moitra</th>
-        <th>Debabrata Mitra</th>
-        <th>Mithun Choudhury</th>
-        <th>Priyanka Sengupta</th>
-        <th>Sayan Mitra</th>
-      </tr>
-    </table>
-    <div class="receipt-sign">
-      Collector: <span>${receiptData.collector || 'Sayan Mitra'}</span>
+      <div class="sign-col">
+        <b>Moumita Shome</b><br>
+        <b>Ragesri Choudhury</b><br>
+        <span class="sign-role">Jt. General Secretaries</span>
+      </div>
+      <div class="sign-col">
+        <b>${receiptData.collector || "Sayan Mitra"}</b><br>
+        <span class="sign-role">Treasurer</span>
+      </div>
     </div>
   </div>
 </body>
 </html>
-`;}
+`;
+}
+
 
 
 
@@ -190,8 +219,48 @@ function buildReceiptHtml(receiptData = {}) {
 //   }
 // }
 
+// async function sendWhatsAppMessage(contactNumber, name, amount, receiptNo) {
+//   try {
+//     const response = await axios.post(
+//      `https://graph.facebook.com/v19.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+//       {
+//         messaging_product: 'whatsapp',
+//         to: `91${contactNumber}`,
+//         type: 'template',
+//         template: {
+//           name: WHATSAPP_TEMPLATE_NAME,
+//           language: {
+//             code: WHATSAPP_LANG_CODE
+//           },
+//           components: [
+//             {
+//               type: 'body',
+//               parameters: [
+//                 { type: 'text', text: name || '' },
+//                 { type: 'text', text: `₹${amount}` },
+//                 { type: 'text', text: receiptNo || '' }
+//               ]
+//             }
+//           ]
+//         }
+//       },
+//       {
+//         headers: {
+//           Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+//           'Content-Type': 'application/json'
+//         }
+//       }
+//     );
+//     console.log('WhatsApp API response:', response.data);
+//   } catch (error) {
+//     console.error('WhatsApp message failed:', error.response?.data || error.message);
+//   }
+// }
+
+
 app.post('/api/send-receipt', async (req, res) => {
   const { email, formData, receiptData } = req.body;
+  console.log('Received receipt:', email, receiptData);
   if (!email) {
     return res.status(400).json({ error: 'No email provided.' });
   }
@@ -246,6 +315,14 @@ app.post('/api/send-receipt', async (req, res) => {
         }
       ]
     });
+//      if (formData?.contact?.length === 10) {
+//   // sendWhatsAppMessage(
+//   //   formData.contact,
+//   //   receiptData.name,
+//   //   receiptData.amountFigure,
+//   //   receiptData.receiptNo
+//   // );
+// }
 
     res.json({ message: 'Combined details and PDF receipt sent successfully!' });
   } catch (err) {
@@ -257,17 +334,19 @@ app.post('/api/send-receipt', async (req, res) => {
 
 
 
+// server.js
 app.post('/api/data', async (req, res) => {
   const { allowedBlocks } = req.body;
   try {
     const values = [];
     let query = `
-      SELECT houseno, name, contact, email, block, amountpaidlastyear
-      FROM CollectionDetails
-      WHERE state = 'active'
+      SELECT c.houseno, c.name, c.contact, c.email, c.block, c.amountpaidlastyear, c.receiptstatus, c.previousyearreceiptnumber, r.receipt_no
+      FROM CollectionDetails c
+      LEFT JOIN ReceiptMapping r ON c.houseno = r.houseno AND c.name = r.name
+      WHERE c.state = 'active'
     `;
     if (!allowedBlocks.includes('ALLBLOCKS')) {
-      query += ` AND block = ANY($1)`;
+      query += ` AND c.block = ANY($1)`;
       values.push(allowedBlocks);
     }
     const result = await pool.query(query, values);
@@ -278,43 +357,42 @@ app.post('/api/data', async (req, res) => {
   }
 });
 
+
+
 // Get Financial Year
 app.get('/api/get-financial-year', (req, res) => {
   const today = new Date();
   const fyYear = (today.getMonth() + 1 >= 4) ? today.getFullYear() : today.getFullYear() - 1;
   res.json({ yearOfPayment: fyYear });
 }); 
+
+
 // Save Transaction for existing user
 // Save Transaction for existing user
 app.post('/api/save-transaction', async (req, res) => {
-  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails } = req.body;
+  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // 1. Find subscriber by houseNo+name
     let subRes = await client.query(
       `SELECT subscriber_id FROM CollectionDetails WHERE houseno = $1 AND name = $2 AND state = 'active'`,
       [houseNo, name]
     );
     let subscriberId;
     if (subRes.rows.length === 0) {
-      // Not found: create new CollectionDetails row for new person in the house
       const insertRes = await client.query(
-        `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear)
-         VALUES ($1, $2, $3, $4, $5, 'active', 0) RETURNING subscriber_id`,
-        [houseNo, name, contact, email || null, block]
+        `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus)
+         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6) RETURNING subscriber_id`,
+        [houseNo, name, contact, email || null, block, receiptStatus || 'due']
       );
       subscriberId = insertRes.rows[0].subscriber_id;
     } else {
       subscriberId = subRes.rows[0].subscriber_id;
-      // Update contact/email/block for the existing person
       await client.query(
-        `UPDATE CollectionDetails SET contact = $1, email = $2, block = $3 WHERE subscriber_id = $4`,
-        [contact, email || null, block, subscriberId]
+        `UPDATE CollectionDetails SET contact = $1, email = $2, block = $3, receiptstatus = $4 WHERE subscriber_id = $5`,
+        [contact, email || null, block, receiptStatus || 'due', subscriberId]
       );
     }
-
-    // 2. Upsert subscription for this subscriber and year
     let subscriptionRes = await client.query(
       'SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1 AND yearofsubscription = $2',
       [subscriberId, yearOfPayment]
@@ -322,30 +400,37 @@ app.post('/api/save-transaction', async (req, res) => {
     let subscriptionId;
     if (subscriptionRes.rows.length > 0) {
       subscriptionId = subscriptionRes.rows[0].subscriptionid;
-      await client.query(
-        'UPDATE SubscriptionDetails SET subscriptiontotalamount = subscriptiontotalamount + $1 WHERE subscriptionid = $2',
-        [amountPaid, subscriptionId]
-      );
     } else {
       const newSub = await client.query(
         `INSERT INTO SubscriptionDetails (subscriberid, yearofsubscription, subscriptiontotalamount, createdat)
-         VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING subscriptionid`,
-        [subscriberId, yearOfPayment, amountPaid]
+         VALUES ($1, $2, 0, CURRENT_TIMESTAMP) RETURNING subscriptionid`,
+        [subscriberId, yearOfPayment]
       );
       subscriptionId = newSub.rows[0].subscriptionid;
     }
 
-    // 3. Insert transaction for this subscription
+    // ----- GET OR CREATE RECEIPT NUMBER -----
+    const receiptNo = await getOrCreateReceiptNo(client, houseNo, name);
+
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo]
+    );
+
+    await client.query(
+      `UPDATE SubscriptionDetails
+       SET subscriptiontotalamount = (
+          SELECT COALESCE(SUM(subscriptionamount),0)
+          FROM TransactionalDetails
+          WHERE subscriptionid = $1 AND (receiptstatus = 'collected' OR receiptstatus = 'completed')
+        )
+       WHERE subscriptionid = $1`,
+      [subscriptionId]
     );
 
     await client.query('COMMIT');
-    // --- Send the form by mail! ---
-
-    res.json({ message: 'Transaction saved successfully' });
+    res.json({ message: 'Transaction saved successfully', receiptNo });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error saving transaction:', err);
@@ -356,48 +441,57 @@ app.post('/api/save-transaction', async (req, res) => {
 });
 
 
+
+
 // Create new house + transaction
 app.post('/api/create-new-house', async (req, res) => {
-  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails } = req.body;
+  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Insert new collection entry with initial amountpaidlastyear
     const colRes = await client.query(
-      'INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear) VALUES ($1, $2, $3, $4, $5, \'active\', $6) RETURNING subscriber_id',
-      [houseNo, name, contact, email, block, amountPaidLastYear || 0]
+      `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8)
+       RETURNING subscriber_id`,
+      [houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '']
     );
     const subscriberId = colRes.rows[0].subscriber_id;
-    // Insert or update subscription
-    const subRes = await client.query(
+    let subRes = await client.query(
       'SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1 AND yearofsubscription = $2',
       [subscriberId, yearOfPayment]
     );
     let subscriptionId;
     if (subRes.rows.length > 0) {
       subscriptionId = subRes.rows[0].subscriptionid;
-      await client.query(
-        'UPDATE SubscriptionDetails SET subscriptiontotalamount = subscriptiontotalamount + $1 WHERE subscriptionid = $2',
-        [amountPaid, subscriptionId]
-      );
     } else {
       const newSub = await client.query(
-        'INSERT INTO SubscriptionDetails (subscriberid, yearofsubscription, subscriptiontotalamount, createdat) VALUES ($1, $2, $3, CURRENT_TIMESTAMP) RETURNING subscriptionid',
-        [subscriberId, yearOfPayment, amountPaid]
+        'INSERT INTO SubscriptionDetails (subscriberid, yearofsubscription, subscriptiontotalamount, createdat) VALUES ($1, $2, 0, CURRENT_TIMESTAMP) RETURNING subscriptionid',
+        [subscriberId, yearOfPayment]
       );
       subscriptionId = newSub.rows[0].subscriptionid;
     }
-    // Insert transactional record
+
+    // ----- GET OR CREATE RECEIPT NUMBER -----
+    const receiptNo = await getOrCreateReceiptNo(client, houseNo, name);
+
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo]
+    );
+
+    await client.query(
+      `UPDATE SubscriptionDetails
+       SET subscriptiontotalamount = (
+          SELECT COALESCE(SUM(subscriptionamount),0)
+          FROM TransactionalDetails
+          WHERE subscriptionid = $1 AND (receiptstatus = 'collected' OR receiptstatus = 'completed')
+        )
+       WHERE subscriptionid = $1`,
+      [subscriptionId]
     );
     await client.query('COMMIT');
-    // --- Send mail ---
-  
-
-    res.json({ message: 'New house, subscription, and transaction saved!' });
+    res.json({ message: 'New house, subscription, and transaction saved!', receiptNo });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error creating new house:', err);
@@ -406,6 +500,10 @@ app.post('/api/create-new-house', async (req, res) => {
     client.release();
   }
 });
+
+//
+
+
 // Update customer state
 app.post('/api/update-customer-state', async (req, res) => {
   const { houseNo, state } = req.body;
@@ -433,7 +531,7 @@ app.get('/api/subscribers', async (req, res) => {
 
 // Combined data endpoint
 app.post('/api/all-data', async (req, res) => {
-  const { allowedBlocks } = req.body;
+  const { allowedBlocks, receiptStatus } = req.body;
   try {
     let query = `
       SELECT 
@@ -450,16 +548,24 @@ app.post('/api/all-data', async (req, res) => {
         t.subscriptionamount,
         t.modeofpayment,
         t.utrnumber,
-        t.referencenumber
+        t.referencenumber,
+        t.receiptstatus,
+        t.receipt_no    -- <-- ADD THIS FIELD
       FROM CollectionDetails c
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
       WHERE c.state = 'active'
     `;
     const values = [];
-    if (!allowedBlocks.includes('ALLBLOCKS')) {
-      query += ` AND c.block = ANY($1)`;
+    if (allowedBlocks && Array.isArray(allowedBlocks) && !allowedBlocks.includes('ALLBLOCKS')) {
+      query += ` AND c.block = ANY($${values.length + 1})`;
       values.push(allowedBlocks);
+    }
+    if (receiptStatus && receiptStatus.toLowerCase() !== 'all') {
+      query += ` AND (t.receiptstatus = $${values.length + 1})`;
+      values.push(receiptStatus.toLowerCase() === "collected" ? "collected" : "due");
+    } else {
+      query += ` AND (t.receiptstatus = 'collected' OR t.receiptstatus = 'completed')`;
     }
     const result = await pool.query(query, values);
     res.json(result.rows);
@@ -468,6 +574,7 @@ app.post('/api/all-data', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch data' });
   }
 });
+
 
 
 
@@ -672,6 +779,127 @@ app.post('/api/dashboard/payment-modes', async (req, res) => {
     res.status(500).json({ error: 'Payment mode query failed' });
   }
 });
+
+
+// Dashboard: Receipt Status Chart
+app.post('/api/dashboard/receipt-status', async (req, res) => {
+  const { allowedBlocks } = req.body;
+  try {
+    let query = `
+      SELECT 
+        COALESCE(SUM(CASE WHEN receiptstatus = 'collected' THEN 1 ELSE 0 END), 0) AS collected,
+        COALESCE(SUM(CASE WHEN receiptstatus = 'due' THEN 1 ELSE 0 END), 0) AS due,
+        COALESCE(SUM(CASE WHEN receiptstatus = 'pending' OR receiptstatus IS NULL OR receiptstatus = '' THEN 1 ELSE 0 END), 0) AS pending
+      FROM CollectionDetails
+      WHERE state = 'active'`;
+    const values = [];
+    if (allowedBlocks && Array.isArray(allowedBlocks) && !allowedBlocks.includes('ALLBLOCKS')) {
+      query += ' AND block = ANY($1)';
+      values.push(allowedBlocks);
+    }
+    const result = await pool.query(query, values);
+    res.json({
+      collected: parseInt(result.rows[0].collected, 10),
+      due: parseInt(result.rows[0].due, 10),
+      pending: parseInt(result.rows[0].pending, 10)
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch receipt status dashboard.' });
+  }
+});
+
+
+app.post('/api/dashboard/update-receiptstatus', async (req, res) => {
+  const { houseno } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // 1. Update CollectionDetails status to 'collected'
+    await client.query(
+      `UPDATE CollectionDetails SET receiptstatus = 'collected' WHERE houseno = $1`,
+      [houseno]
+    );
+    // 2. Get all subscriber_id(s) for this house
+    const subRes = await client.query(
+      `SELECT subscriber_id FROM CollectionDetails WHERE houseno = $1`,
+      [houseno]
+    );
+    if (subRes.rows.length > 0) {
+      for (const row of subRes.rows) {
+        const subscriberId = row.subscriber_id;
+        // 3. Get all subscriptionids for this subscriber
+        const subs = await client.query(
+          `SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1`,
+          [subscriberId]
+        );
+        for (const sub of subs.rows) {
+          // 4. Update all relevant TransactionalDetails to 'completed'
+          await client.query(
+            `UPDATE TransactionalDetails SET receiptstatus = 'completed' WHERE subscriptionid = $1 AND receiptstatus != 'completed'`,
+            [sub.subscriptionid]
+          );
+          // 5. After update, recalculate the subscription sum (collected/completed only)
+          await client.query(
+            `UPDATE SubscriptionDetails
+             SET subscriptiontotalamount = (
+                SELECT COALESCE(SUM(subscriptionamount),0)
+                FROM TransactionalDetails
+                WHERE subscriptionid = $1 AND (receiptstatus = 'collected' OR receiptstatus = 'completed')
+              )
+             WHERE subscriptionid = $1`,
+            [sub.subscriptionid]
+          );
+        }
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ success: false, message: 'Failed to update status' });
+  } finally {
+    client.release();
+  }
+});
+
+
+app.post('/api/dashboard/due-housenos', async (req, res) => {
+  const { allowedBlocks } = req.body;
+  try {
+    let query = `
+      SELECT 
+        c.houseno, 
+        c.name, 
+        c.block, 
+        SUM(t.subscriptionamount) AS total_due_amount
+      FROM CollectionDetails c
+      JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+      JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+      WHERE c.receiptstatus = 'due'
+        AND c.state = 'active'
+        AND t.receiptstatus = 'due'
+    `;
+    const values = [];
+    if (allowedBlocks && Array.isArray(allowedBlocks) && !allowedBlocks.includes('ALLBLOCKS')) {
+      query += ` AND c.block = ANY($1)`;
+      values.push(allowedBlocks);
+    }
+    query += `
+      GROUP BY c.houseno, c.name, c.block
+      ORDER BY c.houseno
+    `;
+
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch due housenos' });
+  }
+});
+
+
+
+
+
 
 
 app.listen(port, () => {
