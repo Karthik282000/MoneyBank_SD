@@ -229,7 +229,7 @@ function FormComponent({ allowedBlocks }) {
 
   const handleButtonClick = (field) => {
     const value = formData[field].trim().toLowerCase();
-    setSearchBy(field);
+    // setSearchBy(field);
 
     if (value) {
       const filtered = allData.filter(item => {
