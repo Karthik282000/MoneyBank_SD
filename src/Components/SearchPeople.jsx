@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './SearchPeople.css';
+import { API_BASE_URL } from './Constants.jsx';
 
 function SearchPeople({ allowedBlocks }) {
   const [houseNo, setHouseNo] = useState('');
   const [name, setName] = useState('');
   const [year, setYear] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
+  const [receiptStatus, setReceiptStatus] = useState(''); // NEW STATE
   const [allData, setAllData] = useState([]);
   const [filteredData, setFilteredData] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -42,8 +44,9 @@ function SearchPeople({ allowedBlocks }) {
 
   const fetchAllData = async () => {
     try {
-      const response = await axios.post('https://moneybank-sd.onrender.com/api/all-data', {
-        allowedBlocks: allowedBlocks || []
+      const response = await axios.post(`${API_BASE_URL}/api/all-data`, {
+        allowedBlocks: allowedBlocks || [],
+        receiptStatus: receiptStatus
       });
       setAllData(response.data);
     } catch (error) {
@@ -64,12 +67,20 @@ function SearchPeople({ allowedBlocks }) {
       );
 
       // Deduplicate by houseno
-      const seen = new Set();
-      filtered = filtered.filter(item => {
-        if (seen.has(item.houseno)) return false;
-        seen.add(item.houseno);
-        return true;
-      });
+      // const seen = new Set();
+      // filtered = filtered.filter(item => {
+      //   if (seen.has(item.houseno)) return false;
+      //   seen.add(item.houseno);
+      //   return true;
+      // });
+
+           const seen = new Set();
+    filtered = filtered.filter(item => {
+      const key = `${item.houseno}||${item.name}`;  // Unique by houseNo and name
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
       setFilteredSuggestions(filtered);
       setShowDropdown(filtered.length > 0);
@@ -88,45 +99,54 @@ function SearchPeople({ allowedBlocks }) {
     setShowDropdown(false);
   };
 
-  const handleFilter = () => {
-    let data = [...allData];
+const handleFilter = () => {
+  let data = [...allData];
 
-    if (houseNo) {
-      data = data.filter(d => d.houseno.toLowerCase() === houseNo.toLowerCase());
-    }
-    if (name) {
-      data = data.filter(d => d.name.toLowerCase().includes(name.toLowerCase()));
-    }
-    if (year) {
-      const yearInt = parseInt(year);
-      data = data.filter(d => {
-        const txYear = new Date(d.yearofpayment).getFullYear();
-        return txYear === yearInt;
-      });
-    }
-
-    // Group by houseno+name+year for multiple persons per house
-    const groupMap = {};
-    data.forEach(item => {
-      const txYear = new Date(item.yearofpayment).getFullYear();
-      const key = `${item.houseno}||${item.name}||${txYear}`;
-      if (!groupMap[key]) {
-        groupMap[key] = {
-          houseno: item.houseno,
-          name: item.name,
-          contact: item.contact,
-          year: txYear,
-          totalAmount: 0,
-          amountPaidLastYear: item.amountpaidlastyear || 0
-        };
-      }
-      groupMap[key].totalAmount += parseFloat(item.subscriptionamount || 0);
+  if (houseNo) {
+    data = data.filter(d => d.houseno.toLowerCase() === houseNo.toLowerCase());
+  }
+  if (name) {
+    data = data.filter(d => d.name.toLowerCase().includes(name.toLowerCase()));
+  }
+  if (year) {
+    const yearInt = parseInt(year);
+    data = data.filter(d => {
+      const txYear = new Date(d.yearofpayment).getFullYear();
+      return txYear === yearInt;
     });
+  }
 
-    setFilteredData(Object.values(groupMap));
-    setBlockFilterResults([]);
-    setTotalBlockAmount(0);
-  };
+  // If filtering for "Due", only include (houseNo, name) pairs where ANY transaction is due
+  if (receiptStatus) {
+    data = data.filter(
+      d => (d.receiptstatus || '').toLowerCase() === receiptStatus
+    );
+  }
+
+  // Group by houseno+name to only show unique pairs (sum amount if you want)
+  const groupMap = {};
+  data.forEach(item => {
+    const key = `${item.houseno}||${item.name}`;
+    if (!groupMap[key]) {
+      groupMap[key] = {
+        houseno: item.houseno,
+        name: item.name,
+        contact: item.contact,
+        // You can aggregate fields as needed
+        year: item.yearofpayment ? new Date(item.yearofpayment).getFullYear() : '',
+        totalAmount: 0,
+        amountPaidLastYear: item.amountpaidlastyear || 0,
+        receiptStatus: (item.receiptstatus || '')
+      };
+    }
+    groupMap[key].totalAmount += parseFloat(item.subscriptionamount || 0);
+  });
+
+  setFilteredData(Object.values(groupMap));
+  setBlockFilterResults([]);
+  setTotalBlockAmount(0);
+};
+
 
   const handleApplyBlockFilter = () => {
     if (!selectedBlock) return;
@@ -144,6 +164,7 @@ function SearchPeople({ allowedBlocks }) {
     setName('');
     setYear('');
     setSelectedBlock('');
+    setReceiptStatus('');
     setFilteredData(null);
     setFilteredSuggestions([]);
     setShowDropdown(false);
@@ -199,7 +220,20 @@ function SearchPeople({ allowedBlocks }) {
         </ul>
       )}
 
-      {/* Year filter (uncomment if needed) */}
+      <div>
+        <label>Receipt Status:</label>
+        <select
+          value={receiptStatus}
+          onChange={e => setReceiptStatus(e.target.value)}
+          style={{ marginLeft: '10px' }}
+        >
+          <option value="">All</option>
+          <option value="collected">Collected</option>
+          <option value="due">Due</option>
+        </select>
+      </div>
+
+      {/* Uncomment this block if year filter is needed */}
       {/* <div>
         <label>Year:</label>
         <input
@@ -241,6 +275,7 @@ function SearchPeople({ allowedBlocks }) {
                 <th>Year</th>
                 <th>Amount Paid Last Year</th>
                 <th>Total Amount Paid</th>
+                <th>Receipt Status</th>
               </tr>
             </thead>
             <tbody>
@@ -252,6 +287,9 @@ function SearchPeople({ allowedBlocks }) {
                   <td>{item.year}</td>
                   <td>{item.amountPaidLastYear}</td>
                   <td>{item.totalAmount.toFixed(2)}</td>
+                  <td style={{ color: item.receiptStatus === 'due' ? 'red' : 'green', fontWeight: 600 }}>
+                    {item.receiptStatus ? item.receiptStatus.charAt(0).toUpperCase() + item.receiptStatus.slice(1) : 'Collected'}
+                  </td>
                 </tr>
               ))}
             </tbody>

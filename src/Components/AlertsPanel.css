@@ -1,0 +1,25 @@
+.alert-card{
+
+  background:#fff4f4;
+
+  padding:14px;
+
+  border-radius:10px;
+
+  margin-bottom:12px;
+
+  color:#b91c1c;
+
+  font-weight:500;
+
+}
+
+.recent-item{
+
+  padding:10px;
+
+  border-bottom:1px solid #eee;
+
+  font-size:14px;
+
+}

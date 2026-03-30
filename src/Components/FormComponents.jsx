@@ -3,14 +3,11 @@ import axios from 'axios';
 import './FormComponents.css';
 import { API_BASE_URL } from './Constants.jsx';
 
+// ...numberToWords and buildReceiptData remain unchanged...
+
 function numberToWords(num) {
-  // Simple converter, you can use 'number-to-words' npm for more robust conversion
-  const ones = [
-    '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'
-  ];
-  const tens = [
-    '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'
-  ];
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   const teens = [
     'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'
   ];
@@ -28,7 +25,7 @@ function buildReceiptData(formData, receiptNo) {
   const today = new Date();
   const dateStr = today.toLocaleDateString('en-GB');
   return {
-    receiptNo: receiptNo || '', // will be set by backend
+    receiptNo: receiptNo || formData.receiptNo || '',
     date: dateStr,
     name: formData.name,
     address: `${formData.houseNo}${formData.block ? ', Block ' + formData.block : ''}`,
@@ -39,11 +36,12 @@ function buildReceiptData(formData, receiptNo) {
       formData.paymentMode === 'Cheque' || formData.paymentMode === 'DD'
         ? formData.referenceDetails
         : formData.paymentMode === 'NEFT'
-        ? formData.utrNumber
-        : '',
-    drawnOn: '', // Optional
+          ? formData.utrNumber
+          : '',
+    drawnOn: '',
     collector: 'Sayan Mitra',
-    email: formData.email
+    email: formData.email,
+    receiptStatus: formData.receiptStatus
   };
 }
 
@@ -54,14 +52,18 @@ function FormComponent({ allowedBlocks }) {
     contact: '',
     email: '',
     amountPaidLastYear: '',
+    previousYearReceiptNumber: '',
     amountPaid: '',
     yearOfPayment: '',
     paymentMode: '',
     utrNumber: '',
     referenceDetails: '',
-    block: ''
+    block: '',
+    receiptStatus: 'collected',
+    receiptNo: ''        // <-- Add this field!
   });
 
+  // ...other hooks...
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState([]);
   const [allData, setAllData] = useState([]);
@@ -73,6 +75,7 @@ function FormComponent({ allowedBlocks }) {
   const [showConfirmInactive, setShowConfirmInactive] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const dropdownRef = useRef(null);
 
@@ -120,30 +123,88 @@ function FormComponent({ allowedBlocks }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-async function sendReceiptToBackend(receiptData) {
-  try {
-    await axios.post(`${API_BASE_URL}/api/send-receipt`, {
-      email: formData.email,
-      formData: formData,
-      receiptData: receiptData
-    });
-  } catch (err) {
-    console.error('Failed to send receipt:', err);
+  async function sendReceiptToBackend(receiptData) {
+    try {
+      await axios.post(`${API_BASE_URL}/api/send-receipt`, {
+        email: formData.email,
+        formData: formData,
+        receiptData: receiptData
+      });
+    } catch (err) {
+      console.error('Failed to send receipt:', err);
+    }
   }
-}
 
   const handleHouseNoChange = value => {
-    const match = allData.find(item => item.houseno?.toLowerCase() === value.toLowerCase());
-    setShowCreateButton(!match);
+    const lowerValue = value.toLowerCase();
+
+    // 🔥 WHEN EMPTY → FULL RESET
     if (value.trim() === '') {
-      const currentYear = formData.yearOfPayment;
-      resetForm();
-      setFormData(prev => ({ ...prev, yearOfPayment: currentYear }));
-    } else {
-      setFormData({ ...formData, houseNo: value });
+      setFormData(prev => ({
+        houseNo: '',
+        name: '',
+        contact: '',
+        email: '',
+        amountPaidLastYear: '',
+        previousYearReceiptNumber: '',
+        amountPaid: '',
+        yearOfPayment: prev.yearOfPayment, // ✅ keep this
+        paymentMode: '',
+        utrNumber: '',
+        referenceDetails: '',
+        block: '',
+        receiptStatus: 'collected',
+        receiptNo: ''
+      }));
+
+      setFilteredSuggestions([]);
+      setShowDropdown(false);
       setSubmitEnabled(true);
+      setShowCreateButton(false);
+      setShowQR(false);
+
+      return;
     }
+
+    // 🔥 NORMAL FLOW
+    setFormData(prev => ({ ...prev, houseNo: value }));
+
+    const filtered = allData.filter(item =>
+      item.houseno?.toLowerCase().includes(lowerValue)
+    );
+
+    setFilteredSuggestions(filtered);
+    setShowDropdown(filtered.length > 0);
+    setSubmitEnabled(filtered.length === 0);
+
+    const exactMatch = allData.find(item =>
+      item.houseno?.toLowerCase() === lowerValue
+    );
+
+    setShowCreateButton(!exactMatch);
   };
+
+
+  // const handleNameChange = value => {
+  //   const lowerValue = value.toLowerCase();
+
+  //   setFormData(prev => ({ ...prev, name: value }));
+
+  //   if (value.trim() === '') {
+  //     setFilteredSuggestions([]);
+  //     setShowDropdown(false);
+  //     setSubmitEnabled(true);
+  //     return;
+  //   }
+
+  //   const filtered = allData.filter(item =>
+  //     item.name?.toLowerCase().includes(lowerValue)
+  //   );
+
+  //   setFilteredSuggestions(filtered);
+  //   setShowDropdown(filtered.length > 0);
+  //   setSubmitEnabled(filtered.length === 0);
+  // };
 
   const handleInputChange = (field, value) => {
     if (field === 'contact') {
@@ -157,6 +218,10 @@ async function sendReceiptToBackend(receiptData) {
       }
     } else if (field === 'email') {
       setFormData(prev => ({ ...prev, email: value }));
+    } else if (field === 'receiptStatus') {
+      setFormData(prev => ({ ...prev, receiptStatus: value }));
+    } else if (field === 'previousYearReceiptNumber') {
+      setFormData(prev => ({ ...prev, previousYearReceiptNumber: value }));
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
     }
@@ -194,11 +259,17 @@ async function sendReceiptToBackend(receiptData) {
       email: suggestion.email || '',
       block: suggestion.block || '',
       amountPaidLastYear: suggestion.amountpaidlastyear || '',
+      previousYearReceiptNumber: suggestion.previousyearreceiptnumber || '',
       amountPaid: '',
       yearOfPayment: prev.yearOfPayment,
       paymentMode: '',
       utrNumber: '',
-      referenceDetails: ''
+      referenceDetails: '',
+      receiptStatus:
+        suggestion.receiptstatus
+          ? suggestion.receiptstatus.toLowerCase() === 'due' ? 'due' : 'collected'
+          : 'collected',
+      receiptNo: suggestion.receipt_no || ''  // <-- Set receiptNo if available
     }));
     setShowDropdown(false);
     setSubmitEnabled(false);
@@ -222,41 +293,57 @@ async function sendReceiptToBackend(receiptData) {
 
   const handleSubmitTransaction = async event => {
     event.preventDefault();
+
+    setLoading(true); // 🔥 START LOADER
+
     try {
       const payload = { ...formData, amountPaid: parseFloat(formData.amountPaid) };
       const response = await axios.post(`${API_BASE_URL}/api/save-transaction`, payload);
 
-      // You can get receiptNo from backend if your backend returns it
-      const receiptNo = response.data.receiptNo || ""; 
+      const receiptNo = response.data.receiptNo || "";
+      setFormData(prev => ({ ...prev, receiptNo }));
+
       const receiptToSend = buildReceiptData(formData, receiptNo);
 
-       await sendReceiptToBackend(receiptToSend);
+      // 🔥 THIS IS IMPORTANT (WAIT FOR EMAIL)
+      await sendReceiptToBackend(receiptToSend);
 
-      // Send receipt structure to backend to generate image/pdf and send mail
-    
+      // SHOW RECEIPT
+      setReceiptData(receiptToSend);
+      setShowReceiptModal(true);
 
-      alert('Transaction and receipt sent successfully!');
-      await fetchData();
-      await fetchFinancialYear();
-      resetForm();
+      setTimeout(() => {
+        fetchData();
+        fetchFinancialYear();
+        resetForm();
+      }, 2000);
+
     } catch (error) {
       alert('Failed to save transaction. Please try again.');
+    } finally {
+      setLoading(false); // 🔥 STOP LOADER
     }
   };
+
 
   const handleCreateNewRecord = async () => {
     try {
       const payload = {
         ...formData,
         amountPaid: parseFloat(formData.amountPaid),
-        amountPaidLastYear: parseFloat(formData.amountPaidLastYear) || 0
+        amountPaidLastYear: parseFloat(formData.amountPaidLastYear) || 0,
+        receiptStatus: formData.receiptStatus || 'collected'
       };
-      await axios.post(`${API_BASE_URL}/api/create-new-house`, payload);
-       const receiptToSend = buildReceiptData(formData, ""); // Or a receipt no if available
-    await sendReceiptToBackend(receiptToSend);
+      const response = await axios.post(`${API_BASE_URL}/api/create-new-house`, payload);
 
-    
-      alert('New house entry and transaction created successfully!');
+      const receiptNo = response.data.receiptNo || "";
+      setFormData(prev => ({ ...prev, receiptNo }));
+
+      const receiptToSend = buildReceiptData(formData, receiptNo);
+      await sendReceiptToBackend(receiptToSend);
+
+      // Open WhatsApp
+
       await fetchData();
       await fetchFinancialYear();
       resetForm();
@@ -266,7 +353,6 @@ async function sendReceiptToBackend(receiptData) {
   };
 
 
-
   const resetForm = () => {
     setFormData(prev => ({
       houseNo: '',
@@ -274,12 +360,15 @@ async function sendReceiptToBackend(receiptData) {
       contact: '',
       email: '',
       amountPaidLastYear: '',
+      previousYearReceiptNumber: '',
       amountPaid: '',
       yearOfPayment: prev.yearOfPayment,
       paymentMode: '',
       utrNumber: '',
       referenceDetails: '',
-      block: ''
+      block: '',
+      receiptStatus: 'collected',
+      receiptNo: ''   // Reset receiptNo
     }));
     setFilteredSuggestions([]);
     setShowDropdown(false);
@@ -300,7 +389,7 @@ async function sendReceiptToBackend(receiptData) {
             onChange={e => handleHouseNoChange(e.target.value)}
             required
           />
-          <button type="button" onClick={() => handleButtonClick('houseNo')}>Show Options</button>
+          {/* <button type="button" onClick={() => handleButtonClick('houseNo')}>Show Options</button> */}
         </div>
 
         <div style={{ position: 'relative' }}>
@@ -323,6 +412,18 @@ async function sendReceiptToBackend(receiptData) {
             ))}
           </ul>
         )}
+
+        {/* Receipt No field */}
+        <div>
+          <label>Receipt No:</label>
+          <input
+            type="text"
+            value={formData.receiptNo || ''}
+            readOnly
+            style={{ backgroundColor: '#f3f3f3', color: '#666', fontWeight: 'bold' }}
+
+          />
+        </div>
 
         <div>
           <label>Contact:</label>
@@ -351,6 +452,10 @@ async function sendReceiptToBackend(receiptData) {
             <option value="C">C</option>
             <option value="D">D</option>
           </select>
+        </div>
+        <div>
+          <label>Previous Year Receipt Number:</label>
+          <input type="text" value={formData.previousYearReceiptNumber} readOnly />
         </div>
         <div>
           <label>Amount Paid Last Year:</label>
@@ -424,13 +529,39 @@ async function sendReceiptToBackend(receiptData) {
           </div>
         )}
 
+        <div>
+          <label>Receipt Status:</label>
+          <select
+            value={formData.receiptStatus}
+            onChange={e => handleInputChange('receiptStatus', e.target.value)}
+            required
+          >
+            <option value="collected">Collected</option>
+            <option value="due">Due</option>
+          </select>
+        </div>
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-          <button type="submit" className="blue-btn">Save Transaction</button>
+          <button
+            type="submit"
+            className="blue-btn"
+            disabled={loading}
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
+          >
+            {loading ? (
+              <>
+                <span className="spinner"></span>
+                Processing...
+              </>
+            ) : (
+              "Save Transaction"
+            )}
+          </button>
           <button
             type="button"
             className="blue-btn"
             onClick={() => {
-              setReceiptData(buildReceiptData(formData, ''));
+              setReceiptData(buildReceiptData(formData, formData.receiptNo));
               setShowReceiptModal(true);
             }}
           >
@@ -493,68 +624,89 @@ async function sendReceiptToBackend(receiptData) {
 
       {/* Receipt Preview Modal */}
       {showReceiptModal && receiptData && (
-  <div className="modal-overlay" style={{ background: "rgba(0,0,0,0.16)" }}>
-    <div className="modal-content receipt-modal">
-      <div className="receipt-preview-container">
-        <div className="receipt-header">
-          <div className="receipt-title">Sarbojanin Durgotsab 2024</div>
-          <div className="receipt-org">
-            Organised by:
-            <div className="receipt-org-main">
-              Lake Gardens People's Association
+        <div className="modal-overlay" style={{ background: "rgba(0,0,0,0.16)" }}>
+          <div className="modal-content receipt-modal" style={{ maxWidth: 850, padding: 0, background: "#fff" }}>
+            <div style={{
+              border: '2px dashed #0033cc',
+              margin: 20,
+              padding: 18,
+              fontFamily: "Georgia, Times New Roman, serif",
+              background: '#fff',
+              color: '#0033cc',
+              position: 'relative'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <b>No.</b> <span style={{ fontWeight: 700 }}>{receiptData.receiptNo}</span>
+                </div>
+                <div>
+                  <b>Date:</b> <span style={{ fontWeight: 700, color: '#222' }}>{receiptData.date}</span>
+                </div>
+              </div>
+              <div style={{ fontSize: '1.5em', fontWeight: 700, textAlign: 'center', margin: '8px 0 5px 0', letterSpacing: 1 }}>
+                Sarbojanin Durgotsab, 2025
+              </div>
+              <div style={{ fontStyle: "italic", fontSize: "1.1em", textAlign: "center", color: '#222' }}>
+                Organised by : <br />
+                <span style={{ fontWeight: 700, color: '#0033cc' }}>SARBOJANIN DURGOTSAB COMMITTEE, LAKE GARDENS</span><br />
+                <span style={{ fontWeight: 700 }}>Lake Gardens People’s Association</span><br />
+                <span style={{ fontWeight: 400, color: '#0033cc', fontSize: '1em' }}>
+                  At Bangur Park, B-202 Lake Gardens, Kolkata - 700 045
+                </span>
+              </div>
+              <hr style={{ border: 'none', borderTop: '1.5px solid #0033cc', margin: '12px 0' }} />
+              <div style={{ fontStyle: 'italic', color: '#0033cc', marginBottom: 4 }}>
+                Received with thanks from <span style={{ fontWeight: 'bold', color: '#333' }}>{receiptData.name}</span>
+              </div>
+              <div style={{ fontStyle: 'italic', color: '#0033cc', marginBottom: 4 }}>
+                of <span style={{ fontWeight: 'bold', color: '#333' }}>{receiptData.address}</span>
+              </div>
+              <div style={{ fontStyle: 'italic', color: '#0033cc', marginBottom: 4 }}>
+                The sum of Rupees <span style={{ fontWeight: 'bold', color: '#333' }}>{receiptData.amountWords} only</span>
+              </div>
+              <div style={{ color: '#0033cc', marginBottom: 4 }}>
+                by <span style={{ fontWeight: 'bold', color: '#333' }}>{receiptData.paymentMode}</span>
+                {receiptData.chequeOrDDNo && (
+                  <> | Ref/UTR No: <span style={{ fontWeight: 'bold', color: '#333' }}>{receiptData.chequeOrDDNo}</span></>
+                )}
+              </div>
+              <div style={{ fontStyle: 'italic', color: '#0033cc', marginBottom: 8 }}>
+                as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2025.
+              </div>
+              <div style={{
+                border: '2px solid #0033cc', borderRadius: 7, width: 120, padding: '5px 0', fontSize: '1.25em',
+                fontWeight: 'bold', margin: '10px 0 6px 0', textAlign: 'center'
+              }}>
+                ₹ {receiptData.amountFigure}
+              </div>
+              {/* Signatures */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', fontSize: '0.98em', marginTop: 32 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <b>Sarbani Basu Roy</b>
+                  <br />
+                  <span style={{ fontStyle: 'italic' }}>President</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <b>Moumita Shome</b><br />
+                  <b>Ragesri Choudhury</b><br />
+                  <span style={{ fontStyle: 'italic' }}>Jt. General Secretaries</span>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <b>{receiptData.collector || "Sayan Mitra"}</b><br />
+                  <span style={{ fontStyle: 'italic' }}>Treasurer</span>
+                </div>
+              </div>
+              {/* (Optional) Stamp: */}
+              {/* <img src="/path-to-transparent-stamp.png" style={{
+            position:'absolute', left:'45%', top:'22%', width:140, opacity:0.2, zIndex:2
+          }}/> */}
+            </div>
+            <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
+              <button onClick={() => setShowReceiptModal(false)} className="blue-btn">Close</button>
             </div>
           </div>
-          <div className="receipt-org-address">
-            At Bangur Park, B-202, Lake Gardens, Kolkata - 700 045
-          </div>
         </div>
-        <hr className="receipt-hr" />
-
-        <div className="receipt-row-flex" style={{marginBottom: "7px"}}>
-          <div className="receipt-label">Receipt No: <span className="receipt-value">{receiptData.receiptNo || '[To be assigned]'}</span></div>
-          <div className="receipt-label">Date: <span className="receipt-value">{receiptData.date}</span></div>
-        </div>
-
-        <div className="receipt-label">
-          Received with thanks from: 
-          <span className="receipt-value"> {receiptData.name}</span>
-        </div>
-        <div className="receipt-label">
-          Of
-          <span className="receipt-value"> {receiptData.address}</span>
-        </div>
-
-        <div className="receipt-label">
-          The sum of Rupees:
-          <span className="receipt-bold-indented">
-              {receiptData.amountWords} only
-          </span>
-        </div>
-
-        <div className="receipt-row-flex" style={{marginTop: "6px"}}>
-          <div className="receipt-label">Amount (₹): <span className="receipt-value">{receiptData.amountFigure}</span></div>
-          <div className="receipt-label">Mode: <span className="receipt-value">{receiptData.paymentMode}</span></div>
-        </div>
-
-        {receiptData.chequeOrDDNo && (
-          <div className="receipt-field">
-            Reference/UTR No: <span className="receipt-bold-indented">{receiptData.chequeOrDDNo}</span>
-          </div>
-        )}
-
-        <div className="receipt-purpose">
-          as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2024
-        </div>
-        <div className="receipt-collector">
-          Collector: <span>{receiptData.collector}</span>
-        </div>
-      </div>
-      <div style={{ marginTop: 18, display: "flex", justifyContent: "center" }}>
-        <button onClick={() => setShowReceiptModal(false)} className="blue-btn">Close</button>
-      </div>
-    </div>
-  </div>
-)}
+      )}
     </div>
   );
 }

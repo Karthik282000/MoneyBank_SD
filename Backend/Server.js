@@ -6,13 +6,21 @@ import nodemailer from 'nodemailer';
 import axios from 'axios';
 import puppeteer from 'puppeteer';
 
+import dotenv from 'dotenv';
+dotenv.config();
 
 const { Pool } = pkg;
 const app = express();
 const port = process.env.PORT || 5000;
 
 app.use(bodyParser.json());
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://moneycollect.vercel.app/'
+  ],
+  credentials: true
+}));
 
 
 const pool = new Pool({
@@ -23,19 +31,19 @@ const pool = new Pool({
 });
 
 // const pool = new Pool({
-//   user: 'postgres',
-//   host: 'localhost',
-//   database: 'SDapp',
-//   password: 'Karthik@2812',
-//   port: 5432
+//   user: process.env.DB_USER,
+//   host: process.env.DB_HOST,
+//   database: process.env.DB_NAME,
+//   password: process.env.DB_PASSWORD,
+//   port: process.env.DB_PORT
 // });
 const transporter = nodemailer.createTransport({
   service: 'gmail',
-  auth: {
-    user: 'sdapp2025@gmail.com',      // <-- CHANGE THIS
-    pass:  'vvym ntxl rhxi tuzl'       // <-- CHANGE THIS
-  },
- tls: {
+ auth: {
+  user: process.env.EMAIL_USER,
+  pass: process.env.EMAIL_PASS
+},
+  tls: {
     rejectUnauthorized: false
   }
 });
@@ -46,32 +54,42 @@ const WHATSAPP_TEMPLATE_NAME = 'receipt_notification_'; // Update to your approv
 const WHATSAPP_LANG_CODE = 'en_US'; // Template language
 
 
-async function getOrCreateReceiptNo(client, houseno, name) {
-  // 1. Check if mapping exists
-  const existing = await client.query(
-    'SELECT receipt_no FROM ReceiptMapping WHERE houseno = $1 AND name = $2',
-    [houseno, name]
-  );
-  if (existing.rows.length > 0) return existing.rows[0].receipt_no;
+// async function getOrCreateReceiptNo(client, houseno, name) {
+//   // 1. Check if mapping exists
+//   const existing = await client.query(
+//     'SELECT receipt_no FROM ReceiptMapping WHERE houseno = $1 AND name = $2',
+//     [houseno, name]
+//   );
+//   if (existing.rows.length > 0) return existing.rows[0].receipt_no;
 
-  // 2. Get max current receipt_no, generate next (always at least 100001)
-  const res = await client.query('SELECT MAX(receipt_no) AS max_receipt FROM ReceiptMapping');
-  let nextNum = 100001; // Start at 100001
-  if (res.rows[0].max_receipt) {
-    const currentNum = parseInt(res.rows[0].max_receipt.replace('E-', ''), 10);
-    nextNum = Math.max(currentNum + 1, 100001); // Always at least 100001
+//   // 2. Get max current receipt_no, generate next (always at least 100001)
+//   const res = await client.query('SELECT MAX(receipt_no) AS max_receipt FROM ReceiptMapping');
+//   let nextNum = 100001; // Start at 100001
+//   if (res.rows[0].max_receipt) {
+//     const currentNum = parseInt(res.rows[0].max_receipt.replace('E-', ''), 10);
+//     nextNum = Math.max(currentNum + 1, 100001); // Always at least 100001
+//   }
+//   if (nextNum > 999999) throw new Error('Receipt number overflow');
+//   const nextReceiptNo = `E-${nextNum.toString().padStart(6, '0')}`;  // <-- 6 digits
+
+//   // 3. Insert new mapping
+//   await client.query(
+//     'INSERT INTO ReceiptMapping (houseno, name, receipt_no) VALUES ($1, $2, $3)',
+//     [houseno, name, nextReceiptNo]
+//   );
+//   return nextReceiptNo;
+// }
+
+async function generateReceiptNo(client) {
+  const res = await client.query(`SELECT nextval('receipt_seq') as seq`);
+  const nextNum = res.rows[0].seq;
+
+  if (nextNum > 999999) {
+    throw new Error('Receipt number overflow');
   }
-  if (nextNum > 999999) throw new Error('Receipt number overflow');
-  const nextReceiptNo = `E-${nextNum.toString().padStart(6, '0')}`;  // <-- 6 digits
 
-  // 3. Insert new mapping
-  await client.query(
-    'INSERT INTO ReceiptMapping (houseno, name, receipt_no) VALUES ($1, $2, $3)',
-    [houseno, name, nextReceiptNo]
-  );
-  return nextReceiptNo;
+  return `E-${nextNum.toString().padStart(6, '0')}`;
 }
-
 
 
 
@@ -95,7 +113,9 @@ function buildMailHtml(formData) {
   `;
 }
 
-function buildReceiptHtml(receiptData = {}) {
+
+
+function buildReceiptHtml(receiptData = {}, config = {}) {
   // For inline PDF rendering, styles must be as close as possible
   return `
 <!DOCTYPE html>
@@ -182,16 +202,16 @@ function buildReceiptHtml(receiptData = {}) {
     <!-- <img class="stamp" src="file:///absolute/path/to/stamp.png" /> -->
     <div class="sign-row">
       <div class="sign-col">
-        <b>Sarbani Basu Roy</b><br>
+        <b>${config.president || 'Sarbani Basu Roy'}</b><br>
         <span class="sign-role">President</span>
       </div>
       <div class="sign-col">
-        <b>Moumita Shome</b><br>
-        <b>Ragesri Choudhury</b><br>
+       <b>${config.secretary1 || 'Moumita Shome'}</b><br>
+<b>${config.secretary2 || 'Ragesri Choudhury'}</b><br>
         <span class="sign-role">Jt. General Secretaries</span>
       </div>
       <div class="sign-col">
-        <b>${receiptData.collector || "Sayan Mitra"}</b><br>
+        <b>${config.treasurer || "Sayan Mitra"}</b><br>
         <span class="sign-role">Treasurer</span>
       </div>
     </div>
@@ -258,73 +278,69 @@ function buildReceiptHtml(receiptData = {}) {
 // }
 
 
+
 app.post('/api/send-receipt', async (req, res) => {
   const { email, formData, receiptData } = req.body;
-  console.log('Received receipt:', email, receiptData);
+
   if (!email) {
     return res.status(400).json({ error: 'No email provided.' });
   }
   if (!receiptData) {
     return res.status(400).json({ error: 'No receipt data provided.' });
   }
-  try {
-    // 1. Build the HTML for the receipt (for PDF)
-    const htmlReceiptAttachment = buildReceiptHtml(receiptData);
 
-    // 2. Generate PDF from HTML using Puppeteer
-    const puppeteer = (await import('puppeteer')).default;
+  try {
+    // ✅ FETCH CONFIG HERE (CORRECT PLACE)
+    const configRes = await pool.query('SELECT * FROM ReceiptConfig LIMIT 1');
+    const config = configRes.rows[0] || {};
+
+    // ✅ PASS CONFIG
+    const htmlReceiptAttachment = buildReceiptHtml(receiptData, config);
+
     const browser = await puppeteer.launch({
       headless: "new",
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
+
     const page = await browser.newPage();
     await page.setContent(htmlReceiptAttachment, { waitUntil: 'networkidle0' });
+
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+
     await browser.close();
 
-    // 3. Compose the email body (form data, NOT PDF)
-    const buildFormDataHtml = (formData) => `
-      <h2>Transaction/Customer Details</h2>
-      <ul>
-        <li><b>House No:</b> ${formData.houseNo || ''}</li>
-        <li><b>Name:</b> ${formData.name || ''}</li>
-        <li><b>Contact:</b> ${formData.contact || ''}</li>
-        <li><b>Email:</b> ${formData.email || ''}</li>
-        <li><b>Block:</b> ${formData.block || ''}</li>
-        <li><b>Amount Paid Last Year:</b> ${formData.amountPaidLastYear || ''}</li>
-        <li><b>Amount Paid:</b> ${formData.amountPaid || ''}</li>
-        <li><b>Year Of Payment:</b> ${formData.yearOfPayment || ''}</li>
-        <li><b>Payment Mode:</b> ${formData.paymentMode || ''}</li>
-        <li><b>UTR Number:</b> ${formData.utrNumber || ''}</li>
-        <li><b>Reference Details:</b> ${formData.referenceDetails || ''}</li>
-      </ul>
-      <p>Thank you,<br/>Sarbojanin Durgotsab Team</p>
-    `;
+    // ✅ STORE RECEIPT
+    await pool.query(
+      `INSERT INTO Receipts 
+       (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [
+        receiptData.receiptNo,
+        formData.houseNo,
+        formData.name,
+        formData.email,
+        formData.amountPaid,
+        formData.yearOfPayment,
+        formData.paymentMode,
+        htmlReceiptAttachment
+      ]
+    );
 
-    // 4. Send the mail: HTML form data in body, PDF as attachment
     await transporter.sendMail({
       from: 'sdapp2025@gmail.com',
       to: email,
       subject: 'Your Submission and Receipt - Sarbojanin Durgotsab 2025',
-      html: buildFormDataHtml(formData),
+      html: `<h3>Receipt Attached</h3>`,
       attachments: [
         {
           filename: 'Receipt.pdf',
-          content: pdfBuffer,
-          contentType: 'application/pdf'
+          content: pdfBuffer
         }
       ]
     });
-//      if (formData?.contact?.length === 10) {
-//   // sendWhatsAppMessage(
-//   //   formData.contact,
-//   //   receiptData.name,
-//   //   receiptData.amountFigure,
-//   //   receiptData.receiptNo
-//   // );
-// }
 
-    res.json({ message: 'Combined details and PDF receipt sent successfully!' });
+    res.json({ message: 'Receipt sent & stored successfully!' });
+
   } catch (err) {
     console.error('Error sending mail:', err);
     res.status(500).json({ error: 'Sending failed.' });
@@ -333,24 +349,67 @@ app.post('/api/send-receipt', async (req, res) => {
 
 
 
+app.post('/api/update-receipt-config', async (req, res) => {
+  const { president, secretary1, secretary2, treasurer } = req.body;
+
+  try {
+    await pool.query(`
+      UPDATE ReceiptConfig
+      SET president = $1,
+          secretary1 = $2,
+          secretary2 = $3,
+          treasurer = $4
+      WHERE id = 1
+    `, [president, secretary1, secretary2, treasurer]);
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error("Error updating config:", err);
+    res.status(500).json({ error: 'Failed to update config' });
+  }
+});
+
 
 // server.js
 app.post('/api/data', async (req, res) => {
   const { allowedBlocks } = req.body;
   try {
     const values = [];
+
     let query = `
-      SELECT c.houseno, c.name, c.contact, c.email, c.block, c.amountpaidlastyear, c.receiptstatus, c.previousyearreceiptnumber, r.receipt_no
+      SELECT 
+        c.houseno,
+        c.name,
+        c.contact,
+        c.email,
+        c.block,
+        c.amountpaidlastyear,
+        c.receiptstatus,
+        c.previousyearreceiptnumber,
+        STRING_AGG(t.receipt_no, ', ' ORDER BY t.createdat DESC) AS receipt_no
       FROM CollectionDetails c
-      LEFT JOIN ReceiptMapping r ON c.houseno = r.houseno AND c.name = r.name
+      LEFT JOIN SubscriptionDetails s 
+        ON c.subscriber_id = s.subscriberid
+      LEFT JOIN TransactionalDetails t 
+        ON s.subscriptionid = t.subscriptionid
       WHERE c.state = 'active'
     `;
+
     if (!allowedBlocks.includes('ALLBLOCKS')) {
       query += ` AND c.block = ANY($1)`;
       values.push(allowedBlocks);
     }
+
+    query += `
+      GROUP BY 
+        c.houseno, c.name, c.contact, c.email, c.block,
+        c.amountpaidlastyear, c.receiptstatus, c.previousyearreceiptnumber
+    `;
+
     const result = await pool.query(query, values);
     res.json(result.rows);
+
   } catch (err) {
     console.error('Error fetching data:', err);
     res.status(500).json({ error: 'Database query failed' });
@@ -364,7 +423,7 @@ app.get('/api/get-financial-year', (req, res) => {
   const today = new Date();
   const fyYear = (today.getMonth() + 1 >= 4) ? today.getFullYear() : today.getFullYear() - 1;
   res.json({ yearOfPayment: fyYear });
-}); 
+});
 
 
 // Save Transaction for existing user
@@ -410,7 +469,8 @@ app.post('/api/save-transaction', async (req, res) => {
     }
 
     // ----- GET OR CREATE RECEIPT NUMBER -----
-    const receiptNo = await getOrCreateReceiptNo(client, houseNo, name);
+    const receiptNo = await generateReceiptNo(client);
+    console.log("NEW RECEIPT GENERATED:", receiptNo);
 
     await client.query(
       `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, createdat)
@@ -472,7 +532,7 @@ app.post('/api/create-new-house', async (req, res) => {
     }
 
     // ----- GET OR CREATE RECEIPT NUMBER -----
-    const receiptNo = await getOrCreateReceiptNo(client, houseNo, name);
+    const receiptNo = await generateReceiptNo(client);
 
     await client.query(
       `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, createdat)
@@ -508,7 +568,7 @@ app.post('/api/create-new-house', async (req, res) => {
 app.post('/api/update-customer-state', async (req, res) => {
   const { houseNo, state } = req.body;
   try {
-    await pool.query(`UPDATE CollectionDetails SET state = $1 WHERE houseno = $2`,[state, houseNo]);
+    await pool.query(`UPDATE CollectionDetails SET state = $1 WHERE houseno = $2`, [state, houseNo]);
     res.json({ success: true });
   } catch (err) {
     console.error('Error updating state:', err);
@@ -781,7 +841,7 @@ app.post('/api/dashboard/payment-modes', async (req, res) => {
 });
 
 
-// Dashboard: Receipt Status Chart
+
 app.post('/api/dashboard/receipt-status', async (req, res) => {
   const { allowedBlocks } = req.body;
   try {
@@ -814,12 +874,12 @@ app.post('/api/dashboard/update-receiptstatus', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // 1. Update CollectionDetails status to 'collected'
+
     await client.query(
       `UPDATE CollectionDetails SET receiptstatus = 'collected' WHERE houseno = $1`,
       [houseno]
     );
-    // 2. Get all subscriber_id(s) for this house
+
     const subRes = await client.query(
       `SELECT subscriber_id FROM CollectionDetails WHERE houseno = $1`,
       [houseno]
@@ -897,7 +957,27 @@ app.post('/api/dashboard/due-housenos', async (req, res) => {
 });
 
 
+// ✅ GET ALL RECEIPTS FOR ADMIN DASHBOARD
+app.get('/api/receipts', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        receipt_no,
+        houseno,
+        name,
+        amount,
+        created_at,
+        receipt_html
+      FROM Receipts
+      ORDER BY created_at DESC
+    `);
 
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching receipts:', err);
+    res.status(500).json({ error: 'Failed to fetch receipts' });
+  }
+});
 
 
 

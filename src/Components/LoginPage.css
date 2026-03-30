@@ -1,82 +1,364 @@
-/* src/Components/LoginPage.css */
+/* GLOBAL RESET */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* PAGE BACKGROUND */
+
+.login-page {
+
+  min-height: 100vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 60px 20px;
+
+  background: linear-gradient(
+    135deg,
+    #667eea,
+    #764ba2,
+    #6dd5fa
+  );
+
+  font-family: 'Poppins', sans-serif;
+
+  position: relative;
+
+  overflow: hidden;
+}
+
+
+/* PARTICLE BACKGROUND */
+
+.background-animation {
+
+  position: absolute;
+  width: 100%;
+  height: 100%;
+
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.25) 2px, transparent 2px),
+    radial-gradient(circle at 70% 60%, rgba(255,255,255,0.25) 2px, transparent 2px),
+    radial-gradient(circle at 40% 80%, rgba(255,255,255,0.25) 2px, transparent 2px),
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,0.25) 2px, transparent 2px);
+
+  background-size: 220px 220px;
+
+  animation: moveBackground 30s linear infinite;
+
+}
+
+@keyframes moveBackground {
+
+  from { transform: translateY(0px); }
+  to { transform: translateY(-200px); }
+
+}
+
+
+/* LOGIN CARD */
+
 .login-container {
-    max-width: 400px;
-    margin: 100px auto;
-    padding: 30px;
-    border-radius: 8px;
-    background: #f9f9f9;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+
+  position: relative;
+
+  width: 100%;
+  max-width: 560px;   /* Increased from 420 */
+
+  padding: 55px 60px;
+
+  border-radius: 22px;
+
+  background: rgba(255,255,255,0.18);
+
+  backdrop-filter: blur(20px);
+
+  border: 1px solid rgba(255,255,255,0.35);
+
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+
+  z-index: 10;
+
+}
+
+
+/* HEADER */
+
+.login-header h1 {
+
+  text-align: center;
+
+  margin-bottom: 10px;
+
+  font-size: 34px;
+
+  font-weight: 700;
+
+  color: white;
+
+}
+
+.login-header p {
+
+  text-align: center;
+
+  margin-bottom: 40px;
+
+  color: #f1f1f1;
+
+  font-size: 16px;
+
+}
+
+
+/* TAB BUTTONS */
+
+.button-group {
+
+  display: flex;
+
+  gap: 15px;
+
+  margin-bottom: 40px;
+
+}
+
+.button-group button {
+
+  flex: 1;
+
+  padding: 14px;
+
+  border-radius: 10px;
+
+  border: none;
+
+  background: rgba(255,255,255,0.45);
+
+  color: #333;
+
+  font-size: 15px;
+
+  cursor: pointer;
+
+  transition: all 0.3s;
+
+}
+
+.button-group button:hover {
+
+  background: rgba(255,255,255,0.75);
+
+}
+
+.button-group button.active {
+
+  background: linear-gradient(
+    90deg,
+    #4facfe,
+    #00f2fe
+  );
+
+  color: white;
+
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+
+}
+
+
+/* FORM LABELS */
+
+.login-container label {
+
+  display: block;
+
+  margin-bottom: 8px;
+
+  color: white;
+
+  font-size: 15px;
+
+  font-weight: 500;
+
+}
+
+
+/* INPUT FIELDS */
+
+.login-container input {
+
+  width: 100%;
+
+  padding: 16px;
+
+  border-radius: 10px;
+
+  border: 1px solid rgba(255,255,255,0.6);
+
+  background: rgba(255,255,255,0.75);
+
+  color: #333;
+
+  margin-bottom: 28px;
+
+  font-size: 15px;
+
+  outline: none;
+
+  transition: all 0.3s;
+
+}
+
+.login-container input:focus {
+
+  border-color: #4facfe;
+
+  box-shadow: 0 0 12px rgba(79,172,254,0.6);
+
+}
+
+
+/* LOGIN BUTTON */
+
+.login-container button[type="submit"] {
+
+  width: 100%;
+
+  padding: 16px;
+
+  border-radius: 10px;
+
+  border: none;
+
+  background: linear-gradient(
+    90deg,
+    #4facfe,
+    #00f2fe
+  );
+
+  color: white;
+
+  font-size: 16px;
+
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: all 0.3s;
+
+}
+
+.login-container button[type="submit"]:hover {
+
+  transform: translateY(-2px);
+
+  box-shadow: 0 8px 25px rgba(79,172,254,0.6);
+
+}
+
+
+/* CHECKBOX GROUP */
+
+.block-checkboxes {
+
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 12px;
+
+  margin-bottom: 30px;
+
+}
+
+.block-checkboxes label {
+
+  font-size: 14px;
+
+}
+
+
+/* ------------------------- */
+/* RESPONSIVE DESIGN */
+/* ------------------------- */
+
+
+/* TABLETS */
+
+@media (max-width: 768px) {
+
+  .login-container {
+
+    max-width: 480px;
+
+    padding: 40px;
+
   }
-  
-  .login-container h2 {
-    text-align: center;
-    margin-bottom: 20px;
+
+  .login-header h1 {
+
+    font-size: 28px;
+
   }
-  
-  .login-container form > div {
-    margin-bottom: 15px;
-  }
-  
-  .login-container label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-  }
-  
-  .login-container input[type="email"],
-  .login-container input[type="password"] {
-    width: 100%;
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-  }
-  
-  .login-container button {
-    width: 100%;
-    padding: 10px;
-    background: #007BFF;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
-  
-  .login-container button:hover {
-    background: #0056b3;
+
+}
+
+
+/* MOBILE */
+
+@media (max-width: 480px) {
+
+  .login-container {
+
+    padding: 30px 25px;
+
   }
 
   .button-group {
-    display: flex;
-    flex-direction: row; /* Make buttons appear side by side */
-    justify-content: space-between;
-    margin-bottom: 15px;
-  }
-  
-  .button-group button {
-    flex: 1;
-    padding: 10px;
-    margin: 0 5px; /* Add spacing between them */
-    border: none;
-    background-color: #007BFF;
-    color: #fff;
-    cursor: pointer;
-    border-radius: 4px;
-    font-weight: 600;
-    transition: background-color 0.3s ease;
-  }
-  
-  .button-group button.active {
-    background-color: #0056b3;
+
+    flex-direction: column;
+
   }
 
-  .login-container form > div,
-.add-user-container > div,
-.update-user-container > div {
-  margin-bottom: 15px; /* Adjust spacing here */
+  .button-group button {
+
+    width: 100%;
+
+  }
+
+  .login-header h1 {
+
+    font-size: 24px;
+
+  }
+
+  .login-header p {
+
+    font-size: 14px;
+
+  }
+
 }
 
-/* makes the check-box line wrap nicely */
-.block-checkboxes > label {
-  margin-right: 12px;
-  cursor: pointer;
+
+/* VERY SMALL DEVICES */
+
+@media (max-width: 360px) {
+
+  .login-container {
+
+    padding: 25px 20px;
+
+  }
+
+  .login-container input {
+
+    padding: 12px;
+
+  }
+
 }

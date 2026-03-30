@@ -148,3 +148,63 @@ html, body {
     font-size: 1.2em;
   }
 }
+
+
+.dashboard-wrapper{
+
+display:grid;
+
+grid-template-columns:280px 1fr 280px;
+
+gap:30px;
+
+max-width:1800px;
+
+margin:auto;
+
+padding:20px;
+
+}
+
+/* LEFT QUICK STATS */
+
+.left-panel{
+
+width:100%;
+
+}
+
+/* CENTER DASHBOARD */
+
+.center-panel{
+
+width:100%;
+
+}
+
+/* RIGHT ALERTS */
+
+.right-panel{
+
+width:100%;
+
+}
+
+/* RESPONSIVE */
+
+@media(max-width:1200px){
+
+.dashboard-wrapper{
+
+grid-template-columns:1fr;
+
+}
+
+.left-panel,
+.right-panel{
+
+order:2;
+
+}
+
+}
