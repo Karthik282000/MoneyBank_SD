@@ -67,11 +67,11 @@ function FormComponent({ allowedBlocks }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState([]);
   const [allData, setAllData] = useState([]);
-  const [submitEnabled, setSubmitEnabled] = useState(true);
+  // const [submitEnabled, setSubmitEnabled] = useState(true);
   const [showCreateButton, setShowCreateButton] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [searchBy, setSearchBy] = useState('');
+  // const [searchBy, setSearchBy] = useState('');
   const [showConfirmInactive, setShowConfirmInactive] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
@@ -159,7 +159,7 @@ function FormComponent({ allowedBlocks }) {
 
       setFilteredSuggestions([]);
       setShowDropdown(false);
-      setSubmitEnabled(true);
+      // setSubmitEnabled(true);
       setShowCreateButton(false);
       setShowQR(false);
 
@@ -175,7 +175,7 @@ function FormComponent({ allowedBlocks }) {
 
     setFilteredSuggestions(filtered);
     setShowDropdown(filtered.length > 0);
-    setSubmitEnabled(filtered.length === 0);
+    // setSubmitEnabled(filtered.length === 0);
 
     const exactMatch = allData.find(item =>
       item.houseno?.toLowerCase() === lowerValue
@@ -239,7 +239,7 @@ function FormComponent({ allowedBlocks }) {
 
       setFilteredSuggestions(filtered);
       setShowDropdown(filtered.length > 0);
-      setSubmitEnabled(filtered.length === 0);
+      // setSubmitEnabled(filtered.length === 0);
 
       if (filtered.length === 0) {
         setShowModal(true);
@@ -247,7 +247,7 @@ function FormComponent({ allowedBlocks }) {
     } else {
       setFilteredSuggestions([]);
       setShowDropdown(false);
-      setSubmitEnabled(true);
+      // setSubmitEnabled(true);
     }
   };
 
@@ -272,7 +272,7 @@ function FormComponent({ allowedBlocks }) {
       receiptNo: suggestion.receipt_no || ''  // <-- Set receiptNo if available
     }));
     setShowDropdown(false);
-    setSubmitEnabled(false);
+    // setSubmitEnabled(false);
     setShowCreateButton(false);
     fetchFinancialYear();
   };
@@ -372,7 +372,7 @@ function FormComponent({ allowedBlocks }) {
     }));
     setFilteredSuggestions([]);
     setShowDropdown(false);
-    setSubmitEnabled(true);
+    // setSubmitEnabled(true);
     setShowCreateButton(false);
     setShowQR(false);
   };

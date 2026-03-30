@@ -13,7 +13,7 @@ function SearchPeople({ allowedBlocks }) {
   const [filteredData, setFilteredData] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [filteredSuggestions, setFilteredSuggestions] = useState([]);
-  const [searchBy, setSearchBy] = useState('');
+  // const [searchBy, setSearchBy] = useState('');
   const [blockFilterResults, setBlockFilterResults] = useState([]);
   const [totalBlockAmount, setTotalBlockAmount] = useState(0);
   const [availableBlocks, setAvailableBlocks] = useState([]);
@@ -57,7 +57,7 @@ function SearchPeople({ allowedBlocks }) {
   // Dropdown show options logic with modal on empty result
   const handleButtonClick = (field) => {
     const value = (field === 'houseNo' ? houseNo : name).trim().toLowerCase();
-    setSearchBy(field);
+    // setSearchBy(field);
 
     if (value) {
       let filtered = allData.filter(item =>

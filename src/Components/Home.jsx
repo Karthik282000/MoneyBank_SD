@@ -82,10 +82,10 @@ function Home({ allowedBlocks = [] }) {
       .catch(() => setDueHouseList([]));
   };
 
-  useEffect(() => {
-    fetchDashboardData();
-    fetchReceipts();
-  }, [allowedBlocks]);
+ useEffect(() => {
+  fetchDashboardData();
+  fetchReceipts();
+}, [fetchDashboardData, allowedBlocks]);
 
   const handleChangeStatus = async (houseno, name) => {
     try {
