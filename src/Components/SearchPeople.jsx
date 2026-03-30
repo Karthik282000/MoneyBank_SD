@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef ,useCallback} from 'react';
 import axios from 'axios';
 import './SearchPeople.css';
 import { API_BASE_URL } from './Constants.jsx';
@@ -39,20 +39,20 @@ function SearchPeople({ allowedBlocks }) {
   }, [allowedBlocks]);
 
   useEffect(() => {
-    fetchAllData();
-  }, [allowedBlocks]);
+  fetchAllData();
+}, [fetchAllData]);
 
-  const fetchAllData = async () => {
-    try {
-      const response = await axios.post(`${API_BASE_URL}/api/all-data`, {
-        allowedBlocks: allowedBlocks || [],
-        receiptStatus: receiptStatus
-      });
-      setAllData(response.data);
-    } catch (error) {
-      console.error('Error fetching all data:', error);
-    }
-  };
+  const fetchAllData = useCallback(async () => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/api/all-data`, {
+      allowedBlocks: allowedBlocks || [],
+      receiptStatus: receiptStatus
+    });
+    setAllData(response.data);
+  } catch (error) {
+    console.error('Error fetching all data:', error);
+  }
+}, [allowedBlocks, receiptStatus]);  // ✅ IMPORTANT
 
   // Dropdown show options logic with modal on empty result
   const handleButtonClick = (field) => {

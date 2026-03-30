@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState,useCallback } from 'react';
 import axios from 'axios';
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer
@@ -33,54 +33,55 @@ function Home({ allowedBlocks = [] }) {
     }
   };
 
-  const fetchDashboardData = () => {
+  const fetchDashboardData = useCallback(() => {
 
-    axios.post(`${API_BASE_URL}/api/dashboard/customer-status`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  axios.post(`${API_BASE_URL}/api/dashboard/customer-status`, {
+    allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  })
+    .then(res => {
+      const data = res.data;
+      setStatusData([
+        { name: 'Paid', value: data.paid || 0 },
+        { name: 'Pending', value: data.pending || 0 }
+      ]);
     })
-      .then(res => {
-        const data = res.data;
-        setStatusData([
-          { name: 'Paid', value: data.paid || 0 },
-          { name: 'Pending', value: data.pending || 0 }
-        ]);
-      })
-      .catch(err => {
-        setStatusData([]);
-        console.error(err);
-      });
+    .catch(err => {
+      setStatusData([]);
+      console.error(err);
+    });
 
-    axios.post(`${API_BASE_URL}/api/dashboard/payment-modes`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  axios.post(`${API_BASE_URL}/api/dashboard/payment-modes`, {
+    allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  })
+    .then(res => {
+      setModeData(
+        (res.data || []).map(d => ({
+          name: d.mode,
+          value: Number(d.count)
+        }))
+      );
     })
-      .then(res => {
-        setModeData(
-          (res.data || []).map(d => ({
-            name: d.mode,
-            value: Number(d.count)
-          }))
-        );
-      })
-      .catch(() => setModeData([]));
+    .catch(() => setModeData([]));
 
-    axios.post(`${API_BASE_URL}/api/dashboard/receipt-status`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  axios.post(`${API_BASE_URL}/api/dashboard/receipt-status`, {
+    allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  })
+    .then(res => {
+      setReceiptStatusData([
+        { name: 'Collected', value: res.data.collected || 0 },
+        { name: 'Due', value: res.data.due || 0 },
+        { name: 'Pending', value: res.data.pending || 0 }
+      ]);
     })
-      .then(res => {
-        setReceiptStatusData([
-          { name: 'Collected', value: res.data.collected || 0 },
-          { name: 'Due', value: res.data.due || 0 },
-          { name: 'Pending', value: res.data.pending || 0 }
-        ]);
-      })
-      .catch(() => setReceiptStatusData([]));
+    .catch(() => setReceiptStatusData([]));
 
-    axios.post(`${API_BASE_URL}/api/dashboard/due-housenos`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
-    })
-      .then(res => setDueHouseList(res.data || []))
-      .catch(() => setDueHouseList([]));
-  };
+  axios.post(`${API_BASE_URL}/api/dashboard/due-housenos`, {
+    allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+  })
+    .then(res => setDueHouseList(res.data || []))
+    .catch(() => setDueHouseList([]));
+
+}, [allowedBlocks]);  // ✅ IMPORTANT DEPENDENCY
 
  useEffect(() => {
   fetchDashboardData();
