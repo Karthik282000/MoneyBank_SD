@@ -38,9 +38,7 @@ function SearchPeople({ allowedBlocks }) {
     }
   }, [allowedBlocks]);
 
-  useEffect(() => {
-  fetchAllData();
-}, [fetchAllData]);
+  
 
   const fetchAllData = useCallback(async () => {
   try {
@@ -52,7 +50,12 @@ function SearchPeople({ allowedBlocks }) {
   } catch (error) {
     console.error('Error fetching all data:', error);
   }
-}, [allowedBlocks, receiptStatus]);  // ✅ IMPORTANT
+}, [allowedBlocks, receiptStatus]);  
+
+
+useEffect(() => {
+  fetchAllData();
+}, [fetchAllData]);
 
   // Dropdown show options logic with modal on empty result
   const handleButtonClick = (field) => {
