@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import './LoginPage.css';
 import { API_BASE_URL } from './Constants.jsx';
 
+
 const BLOCK_OPTIONS = ['A', 'B', 'C', 'D', 'ALLBLOCKS'];
 
 export default function LoginPage({ onLogin }) {
@@ -26,6 +27,8 @@ export default function LoginPage({ onLogin }) {
     password: '',
     blocks: [],
   });
+
+  const [loading, setLoading] = useState(false);
 
   /* ──────────────────────────────────────────────────────────────────────────── */
   /* helpers                                                                     */
@@ -57,33 +60,36 @@ export default function LoginPage({ onLogin }) {
   /* LOGIN                                                                       */
   /* ──────────────────────────────────────────────────────────────────────────── */
 
- const handleLogin = async e => {
+  const handleLogin = async e => {
+    e.preventDefault();
 
-  e.preventDefault();
+    setLoading(true); // 🔥 START LOADER
 
-  // ✅ ADMIN LOGIN
-  if (email === "admin@sdapp.com" && password === "admin123") {
-  onLogin(email, ["ALLBLOCKS"]);   // 🔥 THIS IS THE FIX
-  navigate("/admin-config");
-  return;
-}
+    try {
+      // ✅ ADMIN LOGIN
+      if (email === "admin@sdapp.com" && password === "admin123") {
+        onLogin(email, ["ALLBLOCKS"]);
+        navigate("/admin-config");
+        return;
+      }
 
-  try {
-    const { data } = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
+      const { data } = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
 
-    if (data.success) {
-      localStorage.setItem('allowedBlocks', JSON.stringify(data.allowedBlocks ?? []));
-      onLogin(email, data.allowedBlocks ?? []);
-      navigate("/home"); // optional but recommended
-    } else {
-      alert('Invalid credentials. Please try again or add the user via "Add User".');
+      if (data.success) {
+        localStorage.setItem('allowedBlocks', JSON.stringify(data.allowedBlocks ?? []));
+        onLogin(email, data.allowedBlocks ?? []);
+        navigate("/home");
+      } else {
+        alert('Invalid credentials. Please try again.');
+      }
+
+    } catch (err) {
+      console.error('Login error:', err);
+      alert('Error logging in.');
+    } finally {
+      setLoading(false); // 🔥 STOP LOADER
     }
-
-  } catch (err) {
-    console.error('Login error:', err);
-    alert('Error logging in. Please try again.');
-  }
-};
+  };
 
   /* ──────────────────────────────────────────────────────────────────────────── */
   /* ADD USER                                                                    */
@@ -161,7 +167,7 @@ export default function LoginPage({ onLogin }) {
     }
   };
 
-  
+
 
   /* ──────────────────────────────────────────────────────────────────────────── */
   /* RENDER                                                                      */
@@ -198,8 +204,8 @@ export default function LoginPage({ onLogin }) {
               {tab === 'login'
                 ? 'Login'
                 : tab === 'add'
-                ? 'Add User'
-                : 'Update User'}
+                  ? 'Add User'
+                  : 'Update User'}
 
             </button>
 
@@ -238,7 +244,15 @@ export default function LoginPage({ onLogin }) {
 
             </div>
 
-            <button type="submit">Login</button>
+            <button type="submit" disabled={loading}>
+              {loading ? (
+                <>
+                  <span className="loader"></span> Logging in...
+                </>
+              ) : (
+                "Login"
+              )}
+            </button>
 
           </form>
 
