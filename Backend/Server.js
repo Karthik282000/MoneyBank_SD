@@ -17,20 +17,20 @@ app.use(bodyParser.json());
 app.use(cors());
 
 
-// const pool = new Pool({
-//   connectionString: 'postgresql://postgres:XsPMpWWepOgNFyOghdChoCEzJEEsOhTu@nozomi.proxy.rlwy.net:31144/railway',
-//   ssl: {
-//     rejectUnauthorized: false,
-//   },
-// });
-
 const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT
+  connectionString: 'postgresql://postgres:XsPMpWWepOgNFyOghdChoCEzJEEsOhTu@nozomi.proxy.rlwy.net:31144/railway',
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
+
+// const pool = new Pool({
+//   user: process.env.DB_USER,
+//   host: process.env.DB_HOST,
+//   database: process.env.DB_NAME,
+//   password: process.env.DB_PASSWORD,
+//   port: process.env.DB_PORT
+// });
 const transporter = nodemailer.createTransport({
   service: 'gmail',
  auth: {
