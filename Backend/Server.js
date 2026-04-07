@@ -17,20 +17,20 @@ app.use(bodyParser.json());
 app.use(cors());
 
 
-const pool = new Pool({
-  connectionString: 'postgresql://postgres:XsPMpWWepOgNFyOghdChoCEzJEEsOhTu@nozomi.proxy.rlwy.net:31144/railway',
-  ssl: {
-    rejectUnauthorized: false,
-  },
-});
-
 // const pool = new Pool({
-//   user: process.env.DB_USER,
-//   host: process.env.DB_HOST,
-//   database: process.env.DB_NAME,
-//   password: process.env.DB_PASSWORD,
-//   port: process.env.DB_PORT
+//   connectionString: 'postgresql://postgres:XsPMpWWepOgNFyOghdChoCEzJEEsOhTu@nozomi.proxy.rlwy.net:31144/railway',
+//   ssl: {
+//     rejectUnauthorized: false,
+//   },
 // });
+
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT
+});
 const transporter = nodemailer.createTransport({
   service: 'gmail',
  auth: {
@@ -166,7 +166,7 @@ function buildReceiptHtml(receiptData = {}, config = {}) {
       <div><b>Date:</b> <span class="receipt-value">${receiptData.date || ""}</span></div>
     </div>
     <div class="receipt-header">
-      <div class="receipt-title">Sarbojanin Durgotsab, 2025</div>
+      <div class="receipt-title">Sarbojanin Durgotsab, 2026</div>
       <div class="receipt-org">Organised by :</div>
       <div class="receipt-org-main">SARBOJANIN DURGOTSAB COMMITTEE, LAKE GARDENS</div>
       <div class="receipt-org-main">Lake Gardens People’s Association</div>
@@ -187,7 +187,7 @@ function buildReceiptHtml(receiptData = {}, config = {}) {
       ${receiptData.chequeOrDDNo ? ` | Ref/UTR No: <span class="receipt-value">${receiptData.chequeOrDDNo}</span>` : ""}
     </div>
     <div class="receipt-label">
-      as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2025.
+      as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.
     </div>
     <div class="rupee-box">
       ₹ ${receiptData.amountFigure || ""}
@@ -304,26 +304,26 @@ app.post('/api/send-receipt', async (req, res) => {
     await browser.close();
 
     // ✅ STORE RECEIPT
-    await pool.query(
-      `INSERT INTO Receipts 
-       (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        receiptData.receiptNo,
-        formData.houseNo,
-        formData.name,
-        formData.email,
-        formData.amountPaid,
-        formData.yearOfPayment,
-        formData.paymentMode,
-        htmlReceiptAttachment
-      ]
-    );
+    // await pool.query(
+    //   `INSERT INTO Receipts 
+    //    (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html)
+    //    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    //   [
+    //     receiptData.receiptNo,
+    //     formData.houseNo,
+    //     formData.name,
+    //     formData.email,
+    //     formData.amountPaid,
+    //     formData.yearOfPayment,
+    //     formData.paymentMode,
+    //     htmlReceiptAttachment
+    //   ]
+    // );
 
     await transporter.sendMail({
       from: 'sdapp2025@gmail.com',
       to: email,
-      subject: 'Your Submission and Receipt - Sarbojanin Durgotsab 2025',
+      subject: 'Your Submission and Receipt - Sarbojanin Durgotsab 2026',
       html: `<h3>Receipt Attached</h3>`,
       attachments: [
         {
@@ -361,6 +361,29 @@ app.post('/api/update-receipt-config', async (req, res) => {
   } catch (err) {
     console.error("Error updating config:", err);
     res.status(500).json({ error: 'Failed to update config' });
+  }
+});
+
+
+app.get('/api/receipt-config', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM ReceiptConfig ORDER BY id DESC LIMIT 1'
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        president: '',
+        secretary1: '',
+        secretary2: '',
+        treasurer: ''
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error fetching receipt config:', err);
+    res.status(500).json({ error: 'Failed to fetch config' });
   }
 });
 
@@ -471,7 +494,33 @@ app.post('/api/save-transaction', async (req, res) => {
        VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
       [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo]
     );
+    // 🔥 ALWAYS SAVE RECEIPT (CRITICAL FIX)
+const receiptHtml = buildReceiptHtml({
+  receiptNo,
+  date: new Date().toLocaleDateString('en-GB'),
+  name,
+  address: `${houseNo}${block ? ', Block ' + block : ''}`,
+  amountFigure: amountPaid,
+  amountWords: amountPaid,
+  paymentMode,
+  chequeOrDDNo: utrNumber || referenceDetails || ''
+}, {}); // config optional
 
+await client.query(
+  `INSERT INTO Receipts 
+   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+  [
+    receiptNo,
+    houseNo,
+    name,
+    email || null,
+    amountPaid,
+    yearOfPayment,
+    paymentMode,
+    receiptHtml
+  ]
+);
     await client.query(
       `UPDATE SubscriptionDetails
        SET subscriptiontotalamount = (
@@ -533,6 +582,34 @@ app.post('/api/create-new-house', async (req, res) => {
        VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
       [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo]
     );
+
+    // 🔥 ALWAYS SAVE RECEIPT
+const receiptHtml = buildReceiptHtml({
+  receiptNo,
+  date: new Date().toLocaleDateString('en-GB'),
+  name,
+  address: `${houseNo}${block ? ', Block ' + block : ''}`,
+  amountFigure: amountPaid,
+  amountWords: amountPaid,
+  paymentMode,
+  chequeOrDDNo: utrNumber || referenceDetails || ''
+}, {});
+
+await client.query(
+  `INSERT INTO Receipts 
+   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+  [
+    receiptNo,
+    houseNo,
+    name,
+    email || null,
+    amountPaid,
+    yearOfPayment,
+    paymentMode,
+    receiptHtml
+  ]
+);
 
     await client.query(
       `UPDATE SubscriptionDetails
