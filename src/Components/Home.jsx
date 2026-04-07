@@ -23,6 +23,7 @@ function Home({ allowedBlocks = [] }) {
 
   const [filterHouse, setFilterHouse] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [config, setConfig] = useState({});
 
   const fetchReceipts = async () => {
     try {
@@ -83,9 +84,20 @@ function Home({ allowedBlocks = [] }) {
 
 }, [allowedBlocks]);  // ✅ IMPORTANT DEPENDENCY
 
+
+ const fetchConfig = async () => {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/api/receipt-config`);
+    setConfig(res.data);
+  } catch (err) {
+    console.error("Failed to fetch config", err);
+  }
+};
+
  useEffect(() => {
   fetchDashboardData();
   fetchReceipts();
+  fetchConfig();
 }, [fetchDashboardData, allowedBlocks]);
 
   const handleChangeStatus = async (houseno, name) => {
@@ -96,6 +108,8 @@ function Home({ allowedBlocks = [] }) {
       alert('Failed to change status!');
     }
   };
+
+ 
 
   const filteredReceipts = receipts.filter(r => {
 
@@ -268,7 +282,7 @@ function Home({ allowedBlocks = [] }) {
             </thead>
 
             <tbody>
-              {filteredReceipts.length === 0 === 0 ? (
+              {filteredReceipts.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="no-data">No receipts found</td>
                 </tr>
@@ -299,30 +313,148 @@ function Home({ allowedBlocks = [] }) {
         </div>
       </div>
       {showReceiptModal && selectedReceipt && (
-        <div className="modal-overlay">
-          <div className="modal-content receipt-modal">
+  <div className="modal-overlay">
+    <div className="modal-content receipt-modal">
 
-            <div dangerouslySetInnerHTML={{ __html: selectedReceipt.receipt_html }} />
+      {/* NEW WRAPPER FIX */}
+    {showReceiptModal && selectedReceipt && (
+  <div className="modal-overlay">
+    <div className="modal-content receipt-modal" style={{ maxWidth: 850, padding: 0 }}>
 
-            <div style={{
-              position: "sticky",
-              bottom: 0,
-              background: "#fff",
-              padding: "15px",
-              textAlign: "center",
-              borderTop: "1px solid #ddd"
-            }}>
-              <button
-                className="blue-btn"
-                onClick={() => setShowReceiptModal(false)}
-              >
-                Close
-              </button>
-            </div>
+      <div style={{
+        border: '2px dashed #0033cc',
+        margin: 20,
+        padding: 18,
+        fontFamily: "Georgia, Times New Roman, serif",
+        background: '#fff',
+        color: '#0033cc'
+      }}>
 
+        {/* HEADER */}
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div>
+            <b>No.</b> <span style={{ fontWeight: 700 }}>{selectedReceipt.receipt_no}</span>
+          </div>
+          <div>
+            <b>Date:</b>{" "}
+            <span style={{ fontWeight: 700, color: '#222' }}>
+              {new Date(selectedReceipt.created_at).toLocaleDateString()}
+            </span>
           </div>
         </div>
-      )}
+
+        {/* TITLE */}
+        <div style={{
+          fontSize: '1.5em',
+          fontWeight: 700,
+          textAlign: 'center',
+          margin: '8px 0'
+        }}>
+          Sarbojanin Durgotsab, 2026
+        </div>
+
+        {/* ORG */}
+        <div style={{ textAlign: 'center', color: '#222' }}>
+          Organised by : <br />
+          <b style={{ color: '#0033cc' }}>
+            SARBOJANIN DURGOTSAB COMMITTEE, LAKE GARDENS
+          </b><br />
+          <b>Lake Gardens People’s Association</b><br />
+          <span style={{ color: '#0033cc' }}>
+            At Bangur Park, B-202 Lake Gardens, Kolkata - 700 045
+          </span>
+        </div>
+
+        <hr style={{ borderTop: '1.5px solid #0033cc', margin: '12px 0' }} />
+
+        {/* BODY */}
+        <div style={{ fontStyle: 'italic' }}>
+          Received with thanks from <b style={{ color: '#333' }}>{selectedReceipt.name}</b>
+        </div>
+
+        <div style={{ fontStyle: 'italic' }}>
+          of <b style={{ color: '#333' }}>{selectedReceipt.houseno}</b>
+        </div>
+
+        <div style={{ fontStyle: 'italic' }}>
+          The sum of Rupees <b style={{ color: '#333' }}>
+            {selectedReceipt.amount} only
+          </b>
+        </div>
+
+        <div>
+          by <b style={{ color: '#333' }}>{selectedReceipt.payment_mode || "Cash"}</b>
+        </div>
+
+        <div style={{ fontStyle: 'italic' }}>
+          as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.
+        </div>
+
+        {/* AMOUNT BOX */}
+        <div style={{
+          border: '2px solid #0033cc',
+          borderRadius: 7,
+          width: 120,
+          padding: '5px 0',
+          fontSize: '1.25em',
+          fontWeight: 'bold',
+          margin: '10px 0',
+          textAlign: 'center'
+        }}>
+          ₹ {selectedReceipt.amount}
+        </div>
+
+        {/* ✅ DYNAMIC SIGNATURES */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginTop: 30
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <b>{config.president || "Sarbani Basu Roy"}</b><br />
+            <i>President</i>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <b>{config.secretary1 || "Moumita Shome"}</b><br />
+            <b>{config.secretary2 || "Ragesri Choudhury"}</b><br />
+            <i>Jt. General Secretaries</i>
+          </div>
+
+          <div style={{ textAlign: 'center' }}>
+            <b>{config.treasurer || "Sayan Mitra"}</b><br />
+            <i>Treasurer</i>
+          </div>
+        </div>
+
+      </div>
+
+      {/* CLOSE BUTTON */}
+      <div className="modal-footer">
+        <button
+          className="blue-btn"
+          onClick={() => setShowReceiptModal(false)}
+        >
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
+      <div className="modal-footer">
+        <button
+          className="blue-btn"
+          onClick={() => setShowReceiptModal(false)}
+        >
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
     </div>
   );
 }

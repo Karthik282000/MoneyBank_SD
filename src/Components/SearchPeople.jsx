@@ -5,7 +5,7 @@ import { API_BASE_URL } from './Constants.jsx';
 
 function SearchPeople({ allowedBlocks }) {
   const [houseNo, setHouseNo] = useState('');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(''); 
   const [year, setYear] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
   const [receiptStatus, setReceiptStatus] = useState(''); // NEW STATE

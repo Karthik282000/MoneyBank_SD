@@ -76,6 +76,7 @@ function FormComponent({ allowedBlocks }) {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [config, setConfig] = useState({});
 
   const dropdownRef = useRef(null);
 
@@ -107,9 +108,19 @@ function FormComponent({ allowedBlocks }) {
     }
   };
 
+  const fetchConfig = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/receipt-config`);
+      setConfig(res.data);
+    } catch (err) {
+      console.error("Failed to fetch config", err);
+    }
+  };
+
   useEffect(() => {
     fetchFinancialYear();
     fetchData();
+    fetchConfig();
     // eslint-disable-next-line
   }, [allowedBlocks]);
 
@@ -229,7 +240,7 @@ function FormComponent({ allowedBlocks }) {
 
   const handleButtonClick = (field) => {
     const value = formData[field].trim().toLowerCase();
-    // setSearchBy(field);
+
 
     if (value) {
       const filtered = allData.filter(item => {
@@ -250,6 +261,19 @@ function FormComponent({ allowedBlocks }) {
       // setSubmitEnabled(true);
     }
   };
+
+//   const fetchReceiptFromBackend = async (receiptNo) => {
+//   try {
+//     const res = await axios.get(`${API_BASE_URL}/api/receipts`);
+
+//     const receipt = res.data.find(r => r.receipt_no === receiptNo);
+
+//     return receipt || null;
+//   } catch (err) {
+//     console.error("Error fetching receipt:", err);
+//     return null;
+//   }
+// };
 
   const handleSelectSuggestion = suggestion => {
     setFormData(prev => ({
@@ -291,66 +315,78 @@ function FormComponent({ allowedBlocks }) {
     }
   };
 
-  const handleSubmitTransaction = async event => {
-    event.preventDefault();
+ const handleSubmitTransaction = async event => {
+  event.preventDefault();
 
-    setLoading(true); // 🔥 START LOADER
+  setLoading(true);
 
-    try {
-      const payload = { ...formData, amountPaid: parseFloat(formData.amountPaid) };
-      const response = await axios.post(`${API_BASE_URL}/api/save-transaction`, payload);
+  try {
+    const payload = { ...formData, amountPaid: parseFloat(formData.amountPaid) };
 
-      const receiptNo = response.data.receiptNo || "";
-      setFormData(prev => ({ ...prev, receiptNo }));
+    const response = await axios.post(`${API_BASE_URL}/api/save-transaction`, payload);
 
+    const receiptNo = response.data.receiptNo || "";
+    setFormData(prev => ({ ...prev, receiptNo }));
+
+    // ✅ FETCH RECEIPT FROM BACKEND
+    const receiptToShow = buildReceiptData(formData, receiptNo);
+
+setReceiptData(receiptToShow);
+setShowReceiptModal(true);
+
+    // ✅ SEND EMAIL ONLY IF EXISTS
+    if (formData.email) {
       const receiptToSend = buildReceiptData(formData, receiptNo);
-
-      // 🔥 THIS IS IMPORTANT (WAIT FOR EMAIL)
       await sendReceiptToBackend(receiptToSend);
-
-      // SHOW RECEIPT
-      setReceiptData(receiptToSend);
-      setShowReceiptModal(true);
-
-      setTimeout(() => {
-        fetchData();
-        fetchFinancialYear();
-        resetForm();
-      }, 2000);
-
-    } catch (error) {
-      alert('Failed to save transaction. Please try again.');
-    } finally {
-      setLoading(false); // 🔥 STOP LOADER
     }
-  };
 
-
-  const handleCreateNewRecord = async () => {
-    try {
-      const payload = {
-        ...formData,
-        amountPaid: parseFloat(formData.amountPaid),
-        amountPaidLastYear: parseFloat(formData.amountPaidLastYear) || 0,
-        receiptStatus: formData.receiptStatus || 'collected'
-      };
-      const response = await axios.post(`${API_BASE_URL}/api/create-new-house`, payload);
-
-      const receiptNo = response.data.receiptNo || "";
-      setFormData(prev => ({ ...prev, receiptNo }));
-
-      const receiptToSend = buildReceiptData(formData, receiptNo);
-      await sendReceiptToBackend(receiptToSend);
-
-      // Open WhatsApp
-
-      await fetchData();
-      await fetchFinancialYear();
+    setTimeout(() => {
+      fetchData();
+      fetchFinancialYear();
       resetForm();
-    } catch (err) {
-      alert('Failed to create new entry.');
+    }, 1500);
+
+  } catch (error) {
+    alert('Failed to save transaction. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+ const handleCreateNewRecord = async () => {
+  try {
+    const payload = {
+      ...formData,
+      amountPaid: parseFloat(formData.amountPaid),
+      amountPaidLastYear: parseFloat(formData.amountPaidLastYear) || 0,
+      receiptStatus: formData.receiptStatus || 'collected'
+    };
+
+    const response = await axios.post(`${API_BASE_URL}/api/create-new-house`, payload);
+
+    const receiptNo = response.data.receiptNo || "";
+    setFormData(prev => ({ ...prev, receiptNo }));
+
+    // ✅ FETCH FROM BACKEND
+    const receiptToShow = buildReceiptData(formData, receiptNo);
+
+setReceiptData(receiptToShow);
+setShowReceiptModal(true);
+
+    // ✅ EMAIL OPTIONAL
+    if (formData.email) {
+      const receiptToSend = buildReceiptData(formData, receiptNo);
+      await sendReceiptToBackend(receiptToSend);
     }
-  };
+
+    await fetchData();
+    await fetchFinancialYear();
+
+  } catch (err) {
+    alert('Failed to create new entry.');
+  }
+};
 
 
   const resetForm = () => {
@@ -560,10 +596,15 @@ function FormComponent({ allowedBlocks }) {
           <button
             type="button"
             className="blue-btn"
-            onClick={() => {
-              setReceiptData(buildReceiptData(formData, formData.receiptNo));
-              setShowReceiptModal(true);
-            }}
+           onClick={() => {
+  if (!formData.receiptNo) {
+    alert("No receipt generated yet");
+    return;
+  }
+
+  setReceiptData(buildReceiptData(formData, formData.receiptNo));
+  setShowReceiptModal(true);
+}}
           >
             Preview Receipt
           </button>
@@ -644,7 +685,7 @@ function FormComponent({ allowedBlocks }) {
                 </div>
               </div>
               <div style={{ fontSize: '1.5em', fontWeight: 700, textAlign: 'center', margin: '8px 0 5px 0', letterSpacing: 1 }}>
-                Sarbojanin Durgotsab, 2025
+                Sarbojanin Durgotsab, 2026
               </div>
               <div style={{ fontStyle: "italic", fontSize: "1.1em", textAlign: "center", color: '#222' }}>
                 Organised by : <br />
@@ -671,7 +712,7 @@ function FormComponent({ allowedBlocks }) {
                 )}
               </div>
               <div style={{ fontStyle: 'italic', color: '#0033cc', marginBottom: 8 }}>
-                as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2025.
+                as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.
               </div>
               <div style={{
                 border: '2px solid #0033cc', borderRadius: 7, width: 120, padding: '5px 0', fontSize: '1.25em',
@@ -681,20 +722,24 @@ function FormComponent({ allowedBlocks }) {
               </div>
               {/* Signatures */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', fontSize: '0.98em', marginTop: 32 }}>
+
                 <div style={{ textAlign: 'center' }}>
-                  <b>Sarbani Basu Roy</b>
+                  <b>{config.president || "President"}</b>
                   <br />
                   <span style={{ fontStyle: 'italic' }}>President</span>
                 </div>
+
                 <div style={{ textAlign: 'center' }}>
-                  <b>Moumita Shome</b><br />
-                  <b>Ragesri Choudhury</b><br />
+                  <b>{config.secretary1 || ""}</b><br />
+                  <b>{config.secretary2 || ""}</b><br />
                   <span style={{ fontStyle: 'italic' }}>Jt. General Secretaries</span>
                 </div>
+
                 <div style={{ textAlign: 'center' }}>
-                  <b>{receiptData.collector || "Sayan Mitra"}</b><br />
+                  <b>{config.treasurer || receiptData.collector || "Treasurer"}</b><br />
                   <span style={{ fontStyle: 'italic' }}>Treasurer</span>
                 </div>
+
               </div>
               {/* (Optional) Stamp: */}
               {/* <img src="/path-to-transparent-stamp.png" style={{

@@ -369,3 +369,70 @@
   border-radius: 10px;
   overflow: hidden;
 }
+
+/* OVERLAY */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+/* MODAL BOX */
+.receipt-modal {
+  width: 95%;
+  max-width: 900px;
+  max-height: 90vh;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* SCROLL AREA */
+.receipt-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;   /* 🔥 FIX HORIZONTAL SCROLL */
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+/* RECEIPT CONTENT */
+.receipt-inner {
+  width: 100%;
+  max-width: 750px;   /* SAME AS YOUR ORIGINAL RECEIPT */
+}
+
+/* FORCE RECEIPT TO FIT */
+.receipt-inner * {
+  max-width: 100% !important;
+  word-wrap: break-word;
+}
+
+/* FOOTER */
+.modal-footer {
+  padding: 15px;
+  border-top: 1px solid #ddd;
+  text-align: center;
+  background: #fff;
+}
+
+/* BUTTON */
+.blue-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(135deg, #00c6ff, #0072ff);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
