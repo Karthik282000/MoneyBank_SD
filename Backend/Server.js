@@ -31,14 +31,38 @@ const pool = new Pool({
 //   password: process.env.DB_PASSWORD,
 //   port: process.env.DB_PORT
 // });
+
+
+
+// const transporter = nodemailer.createTransport({
+//   host: 'smtp.gmail.com',
+//   port: 465,
+//   secure: true,
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS
+//   },
+//   tls: {
+//     rejectUnauthorized: false   // ✅ FIX
+//   }
+// });
+
+
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
- auth: {
-  user: process.env.EMAIL_USER,
-  pass: process.env.EMAIL_PASS
-},
-  tls: {
-    rejectUnauthorized: false
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // IMPORTANT
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ SMTP ERROR:', error);
+  } else {
+    console.log('✅ SMTP READY');
   }
 });
 
@@ -387,7 +411,31 @@ app.get('/api/receipt-config', async (req, res) => {
   }
 });
 
+app.get('/api/financial-summary/:houseNo', async (req, res) => {
+  const { houseNo } = req.params;
 
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COALESCE(SUM(t.subscriptionamount), 0) AS total_amount,
+        STRING_AGG(t.receipt_no, ', ' ORDER BY t.createdat DESC) AS receipts
+      FROM CollectionDetails c
+      JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+      JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+      WHERE c.houseno = $1
+      AND DATE_PART('year', t.createdat) = DATE_PART('year', CURRENT_DATE)
+    `, [houseNo]);
+
+    res.json({
+      totalAmount: result.rows[0].total_amount || 0,
+      receipts: result.rows[0].receipts || ''
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch summary' });
+  }
+});
 // server.js
 app.post('/api/data', async (req, res) => {
   const { allowedBlocks } = req.body;
