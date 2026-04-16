@@ -101,6 +101,8 @@ export default function LoginPage({ onLogin }) {
     if (!newUser.email || !newUser.password) return alert('Please enter both email and password.');
     if (newUser.blocks.length === 0) return alert('Select at least one block (or ALLBLOCKS).');
 
+    setLoading(true); // 🔥 START LOADER
+
     try {
 
       const { data } = await axios.post(`${API_BASE_URL}/api/add-user`, {
@@ -110,22 +112,18 @@ export default function LoginPage({ onLogin }) {
       });
 
       if (data.success) {
-
         alert('User created!');
         setNewUser({ email: '', password: '', blocks: [] });
         setMasterPassword('');
-
       } else {
-
         alert(data.message || 'Failed to add user.');
-
       }
 
     } catch (err) {
-
       console.error('add-user error', err);
       alert('Server error while adding user.');
-
+    } finally {
+      setLoading(false); // 🔥 STOP LOADER
     }
   };
 
@@ -139,6 +137,8 @@ export default function LoginPage({ onLogin }) {
     if (!updateUser.email || !updateUser.password) return alert('Please enter email + new password.');
     if (updateUser.blocks.length === 0) return alert('Select at least one block (or ALLBLOCKS).');
 
+    setLoading(true); // 🔥 START LOADER
+
     try {
 
       const { data } = await axios.post(`${API_BASE_URL}/api/update-user`, {
@@ -148,22 +148,18 @@ export default function LoginPage({ onLogin }) {
       });
 
       if (data.success) {
-
         alert('User updated.');
         setUpdateUser({ email: '', password: '', blocks: [] });
         setMasterPassword('');
-
       } else {
-
         alert(data.message || 'Failed to update user.');
-
       }
 
     } catch (err) {
-
       console.error('update-user error', err);
       alert('Server error while updating user.');
-
+    } finally {
+      setLoading(false); // 🔥 STOP LOADER
     }
   };
 
@@ -330,7 +326,15 @@ export default function LoginPage({ onLogin }) {
 
             </div>
 
-            <button onClick={handleAddUser}>Create User</button>
+            <button onClick={handleAddUser} disabled={loading}>
+              {loading ? (
+                <>
+                  <span className="loader"></span> Creating...
+                </>
+              ) : (
+                "Create User"
+              )}
+            </button>
 
           </section>
 
@@ -408,7 +412,15 @@ export default function LoginPage({ onLogin }) {
 
             </div>
 
-            <button onClick={handleUpdateUser}>Update User</button>
+            <button onClick={handleUpdateUser} disabled={loading}>
+              {loading ? (
+                <>
+                  <span className="loader"></span> Updating...
+                </>
+              ) : (
+                "Update User"
+              )}
+            </button>
 
           </section>
 
