@@ -4,7 +4,8 @@ import cors from 'cors';
 import pkg from 'pg';
 import nodemailer from 'nodemailer';
 import axios from 'axios';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -303,52 +304,41 @@ app.post('/api/send-receipt', async (req, res) => {
   if (!email) {
     return res.status(400).json({ error: 'No email provided.' });
   }
-  if (!receiptData) {
-    return res.status(400).json({ error: 'No receipt data provided.' });
-  }
 
   try {
-    // ✅ FETCH CONFIG HERE (CORRECT PLACE)
     const configRes = await pool.query('SELECT * FROM ReceiptConfig LIMIT 1');
     const config = configRes.rows[0] || {};
 
-    // ✅ PASS CONFIG
     const htmlReceiptAttachment = buildReceiptHtml(receiptData, config);
 
+    // ✅ NEW PUPPETEER SETUP
     const browser = await puppeteer.launch({
-      headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
-    await page.setContent(htmlReceiptAttachment, { waitUntil: 'networkidle0' });
 
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+    await page.setContent(htmlReceiptAttachment, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
+    });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true
+    });
 
     await browser.close();
 
-    // ✅ STORE RECEIPT
-    // await pool.query(
-    //   `INSERT INTO Receipts 
-    //    (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html)
-    //    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    //   [
-    //     receiptData.receiptNo,
-    //     formData.houseNo,
-    //     formData.name,
-    //     formData.email,
-    //     formData.amountPaid,
-    //     formData.yearOfPayment,
-    //     formData.paymentMode,
-    //     htmlReceiptAttachment
-    //   ]
-    // );
-
+    // ✅ SEND EMAIL
     await transporter.sendMail({
-      from: 'sdapp2025@gmail.com',
+      from: process.env.EMAIL_USER,
       to: email,
       subject: 'Your Submission and Receipt - Sarbojanin Durgotsab 2026',
-      html: `<h3>Receipt Attached</h3>`,
+      html: `<h3>Your receipt is attached</h3>`,
       attachments: [
         {
           filename: 'Receipt.pdf',
@@ -357,10 +347,10 @@ app.post('/api/send-receipt', async (req, res) => {
       ]
     });
 
-    res.json({ message: 'Receipt sent & stored successfully!' });
+    res.json({ message: 'Receipt sent successfully!' });
 
   } catch (err) {
-    console.error('Error sending mail:', err);
+    console.error('❌ FULL ERROR:', err);
     res.status(500).json({ error: 'Sending failed.' });
   }
 });
