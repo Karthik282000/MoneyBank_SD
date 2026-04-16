@@ -59,6 +59,8 @@ function FormComponent({ allowedBlocks }) {
     utrNumber: '',
     referenceDetails: '',
     block: '',
+    amountPaidThisYear: '',
+    receiptsThisYear: '',
     receiptStatus: 'collected',
     receiptNo: ''        // <-- Add this field!
   });
@@ -107,6 +109,20 @@ function FormComponent({ allowedBlocks }) {
       console.error('Error fetching financial year:', error);
     }
   };
+const fetchFinancialSummary = async (houseNo) => {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/api/financial-summary/${houseNo}`);
+
+    setFormData(prev => ({
+      ...prev,
+      amountPaidThisYear: res.data.totalAmount,
+      receiptsThisYear: res.data.receipts
+    }));
+
+  } catch (err) {
+    console.error("Error fetching financial summary:", err);
+  }
+};
 
   const fetchConfig = async () => {
     try {
@@ -121,6 +137,7 @@ function FormComponent({ allowedBlocks }) {
     fetchFinancialYear();
     fetchData();
     fetchConfig();
+    fetchFinancialSummary();
     // eslint-disable-next-line
   }, [allowedBlocks]);
 
@@ -284,6 +301,7 @@ function FormComponent({ allowedBlocks }) {
       block: suggestion.block || '',
       amountPaidLastYear: suggestion.amountpaidlastyear || '',
       previousYearReceiptNumber: suggestion.previousyearreceiptnumber || '',
+      
       amountPaid: '',
       yearOfPayment: prev.yearOfPayment,
       paymentMode: '',
@@ -293,12 +311,14 @@ function FormComponent({ allowedBlocks }) {
         suggestion.receiptstatus
           ? suggestion.receiptstatus.toLowerCase() === 'due' ? 'due' : 'collected'
           : 'collected',
-      receiptNo: suggestion.receipt_no || ''  // <-- Set receiptNo if available
+      receiptNo: suggestion.receipt_no || '' 
+       // <-- Set receiptNo if available
     }));
     setShowDropdown(false);
     // setSubmitEnabled(false);
     setShowCreateButton(false);
     fetchFinancialYear();
+    fetchFinancialSummary(suggestion.houseno);
   };
 
   const handleToggleInactive = async () => {
@@ -404,7 +424,9 @@ setShowReceiptModal(true);
       referenceDetails: '',
       block: '',
       receiptStatus: 'collected',
-      receiptNo: ''   // Reset receiptNo
+      receiptNo: '' ,
+      amountPaidThisYear: '',
+receiptsThisYear: '',  // Reset receiptNo
     }));
     setFilteredSuggestions([]);
     setShowDropdown(false);
@@ -460,6 +482,14 @@ setShowReceiptModal(true);
 
           />
         </div>
+        <div>
+  <label>Receipts Made This Financial Year:</label>
+  <input
+    type="text"
+    value={formData.receiptsThisYear}
+    readOnly
+  />
+</div>
 
         <div>
           <label>Contact:</label>
@@ -497,6 +527,14 @@ setShowReceiptModal(true);
           <label>Amount Paid Last Year:</label>
           <input type="text" value={formData.amountPaidLastYear} readOnly />
         </div>
+        <div>
+  <label>Amount Paid This Financial Year:</label>
+  <input
+    type="text"
+    value={formData.amountPaidThisYear}
+    readOnly
+  />
+</div>
         <div>
           <label>Amount Paid:</label>
           <input type="number" value={formData.amountPaid} onChange={e => handleInputChange('amountPaid', e.target.value)} required />
