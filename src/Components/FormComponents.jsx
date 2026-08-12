@@ -221,7 +221,8 @@ function FormComponent({ allowedBlocks }) {
       amountPaid: formData.amountPaid,
       yearOfPayment: formData.yearOfPayment,
       paymentMode: formData.paymentMode,
-      receiptLink: receiptData?.receiptViewUrl || receiptData?.receiptImageUrl,
+      // Send the SVG image link so the customer can open/download it on any device
+      receiptLink: receiptData?.receiptImageUrl || receiptData?.receiptViewUrl,
     });
   };
 
@@ -505,7 +506,7 @@ function FormComponent({ allowedBlocks }) {
       setReceiptData({ ...receiptToShow, receiptImageUrl, receiptViewUrl });
       setShowReceiptModal(true);
 
-      // 📲 REDIRECT TO WHATSAPP with the readable receipt link (fires on save)
+      // 📲 REDIRECT TO WHATSAPP with the SVG receipt link (fires right after save)
       openWhatsApp({
         contact: formData.contact,
         name: formData.name,
@@ -514,7 +515,8 @@ function FormComponent({ allowedBlocks }) {
         amountPaid: formData.amountPaid,
         yearOfPayment: formData.yearOfPayment,
         paymentMode: formData.paymentMode,
-        receiptLink: receiptViewUrl || receiptImageUrl,
+        // Send the SVG image link (openable/downloadable on any device)
+        receiptLink: receiptImageUrl || receiptViewUrl,
       });
 
       // ⬇️ AUTO-DOWNLOAD the receipt to this device
@@ -578,7 +580,7 @@ function FormComponent({ allowedBlocks }) {
       setReceiptData({ ...receiptToShow, receiptImageUrl, receiptViewUrl });
       setShowReceiptModal(true);
 
-      // 📲 REDIRECT TO WHATSAPP with the readable receipt link (fires on save)
+      // 📲 REDIRECT TO WHATSAPP with the SVG receipt link (fires right after save)
       openWhatsApp({
         contact: formData.contact,
         name: formData.name,
@@ -587,7 +589,8 @@ function FormComponent({ allowedBlocks }) {
         amountPaid: formData.amountPaid,
         yearOfPayment: formData.yearOfPayment,
         paymentMode: formData.paymentMode,
-        receiptLink: receiptViewUrl || receiptImageUrl,
+        // Send the SVG image link (openable/downloadable on any device)
+        receiptLink: receiptImageUrl || receiptViewUrl,
       });
 
       // ⬇️ AUTO-DOWNLOAD the receipt to this device
