@@ -7,6 +7,7 @@ import Home from './Components/Home.jsx';
 import FormComponent from './Components/FormComponents.jsx';
 import SearchPeople from './Components/SearchPeople.jsx';
 import AdminConfig from "./Components/AdminConfig.jsx";
+import DashboardLayout from "./Layout/DashboardLayout.jsx";
 
 function AppWrapper() {
   return (
@@ -61,43 +62,15 @@ function App() {
       {!loggedInUser ? (
         <LoginPage onLogin={handleLogin} />
       ) : (
-        <>
-          {/* HEADER */}
-          <div className="header">
-            <h2>
-              Welcome, <span style={{ fontWeight: "bold" }}>{loggedInUser}!</span>
-            </h2>
-
-            <button onClick={handleLogout} style={{ marginLeft: 20 }}>
-              Logout
-            </button>
-          </div>
-
-          {/* TABS */}
-          <div className="tabs">
-            <button onClick={() => navigate('/home')}>Home</button>
-            <button onClick={() => navigate('/pay')}>Pay Subscription</button>
-            <button onClick={() => navigate('/search')}>Search People</button>
-
-            {/* OPTIONAL: show admin only */}
-            {loggedInUser === "admin@sdapp.com" && (
-              <button onClick={() => navigate('/admin-config')}>Admin</button>
-            )}
-          </div>
-
-          {/* ROUTES */}
-          <div className="content">
-            <Routes>
-              <Route path="/home" element={<Home allowedBlocks={allowedBlocks} />} />
-              <Route path="/pay" element={<FormComponent allowedBlocks={allowedBlocks} />} />
-              <Route path="/search" element={<SearchPeople allowedBlocks={allowedBlocks} />} />
-              <Route path="/admin-config" element={<AdminConfig />} />
-
-              {/* Default */}
-              <Route path="*" element={<Navigate to="/home" />} />
-            </Routes>
-          </div>
-        </>
+        <DashboardLayout user={loggedInUser} onLogout={handleLogout}>
+  <Routes>
+    <Route path="/home" element={<Home allowedBlocks={allowedBlocks} />} />
+    <Route path="/pay" element={<FormComponent allowedBlocks={allowedBlocks} />} />
+    <Route path="/search" element={<SearchPeople allowedBlocks={allowedBlocks} />} />
+    <Route path="/admin-config" element={<AdminConfig />} />
+    <Route path="*" element={<Navigate to="/home" />} />
+  </Routes>
+</DashboardLayout>
       )}
     </div>
   );

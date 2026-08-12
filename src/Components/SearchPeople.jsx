@@ -190,155 +190,198 @@ const handleFilter = () => {
   }, []);
 
   return (
-    <div className="search-people">
-      <h1>Search Subscriptions</h1>
+    <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
 
-      <div style={{ position: "relative" }}>
-        <label>House No:</label>
-        <input
-          type="text"
-          value={houseNo}
-          onChange={e => setHouseNo(e.target.value)}
-        />
-        <button type="button" onClick={() => handleButtonClick('houseNo')}>Show Options</button>
+      {/* Ambient animated glow blobs */}
+      <div className="pointer-events-none absolute -top-24 left-10 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />
+      <div className="pointer-events-none absolute bottom-0 -right-24 h-72 w-72 rounded-full bg-indigo-400/20 blur-3xl animate-floatBlob" style={{ animationDelay: '4s' }} />
+
+      <div className="relative mb-8 text-center">
+        <p className="text-xs uppercase tracking-[0.4em] text-blue-500/80">Records</p>
+        <h1 className="mt-2 text-3xl md:text-4xl font-bold tracking-tight neon-text">Search Subscriptions</h1>
+        <div className="mx-auto mt-4 h-[2px] w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
       </div>
 
-      <div>
-        <label>Name:</label>
-        <input
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-        />
-        <button type="button" onClick={() => handleButtonClick('name')}>Show Options</button>
-      </div>
+      <div className="relative glass-card p-5 md:p-8 space-y-5">
 
-      {showDropdown && filteredSuggestions.length > 0 && (
-        <ul className="suggestions-dropdown" ref={dropdownRef}>
-          {filteredSuggestions.map((suggestion, index) => (
-            <li key={index} onClick={() => handleSelectSuggestion(suggestion)}>
-              {suggestion.houseno} - {suggestion.name} - {suggestion.contact}
-            </li>
-          ))}
-        </ul>
-      )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
 
-      <div>
-        <label>Receipt Status:</label>
-        <select
-          value={receiptStatus}
-          onChange={e => setReceiptStatus(e.target.value)}
-          style={{ marginLeft: '10px' }}
-        >
-          <option value="">All</option>
-          <option value="collected">Collected</option>
-          <option value="due">Due</option>
-        </select>
-      </div>
+          {/* House No */}
+          <div className="relative">
+            <label className="block text-slate-700 font-semibold mb-2">House No:</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={houseNo}
+                onChange={e => setHouseNo(e.target.value)}
+                className="input-neon"
+              />
+              <button type="button" onClick={() => handleButtonClick('houseNo')} className="btn-neon whitespace-nowrap !px-4 text-sm">Show Options</button>
+            </div>
+          </div>
 
-      {/* Uncomment this block if year filter is needed */}
-      {/* <div>
-        <label>Year:</label>
-        <input
-          type="number"
-          placeholder="e.g. 2025"
-          value={year}
-          onChange={e => setYear(e.target.value)}
-        />
-      </div> */}
+          {/* Name */}
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">Name:</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                className="input-neon"
+              />
+              <button type="button" onClick={() => handleButtonClick('name')} className="btn-neon whitespace-nowrap !px-4 text-sm">Show Options</button>
+            </div>
+          </div>
 
-      <div>
-        <label>Block:</label>
-        <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)}>
-          <option value="">Select Block</option>
-          {Array.isArray(availableBlocks) && availableBlocks.map((block, index) => (
-            <option key={index} value={block}>{block}</option>
-          ))}
-        </select>
-        <button onClick={handleApplyBlockFilter} style={{ marginLeft: '10px' }}>Apply Block Filter</button>
-      </div>
+        </div>
 
-      <div style={{ marginTop: '10px' }}>
-        <button onClick={handleFilter}>Apply All Filters</button>
-        <button onClick={resetFilters} style={{ marginLeft: '10px' }}>
-          Reset Filters
-        </button>
+        {showDropdown && filteredSuggestions.length > 0 && (
+          <ul
+            ref={dropdownRef}
+            className="bg-white border border-slate-200 rounded-2xl shadow-neon max-h-64 overflow-y-auto divide-y divide-slate-100"
+          >
+            {filteredSuggestions.map((suggestion, index) => (
+              <li
+                key={index}
+                onClick={() => handleSelectSuggestion(suggestion)}
+                className="px-4 py-3 cursor-pointer transition hover:bg-blue-50 text-slate-700"
+              >
+                {suggestion.houseno} - {suggestion.name} - {suggestion.contact}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+          {/* Receipt Status */}
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">Receipt Status:</label>
+            <select
+              value={receiptStatus}
+              onChange={e => setReceiptStatus(e.target.value)}
+              className="input-neon"
+            >
+              <option value="">All</option>
+              <option value="collected">Collected</option>
+              <option value="due">Due</option>
+            </select>
+          </div>
+
+          {/* Uncomment this block if year filter is needed */}
+          {/* <div>
+            <label>Year:</label>
+            <input
+              type="number"
+              placeholder="e.g. 2025"
+              value={year}
+              onChange={e => setYear(e.target.value)}
+            />
+          </div> */}
+
+          {/* Block */}
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">Block:</label>
+            <div className="flex gap-2">
+              <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)} className="input-neon">
+                <option value="">Select Block</option>
+                {Array.isArray(availableBlocks) && availableBlocks.map((block, index) => (
+                  <option key={index} value={block}>{block}</option>
+                ))}
+              </select>
+              <button onClick={handleApplyBlockFilter} className="btn-neon whitespace-nowrap !px-4 text-sm">Apply Block Filter</button>
+            </div>
+          </div>
+
+        </div>
+
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button onClick={handleFilter} className="btn-neon">Apply All Filters</button>
+          <button onClick={resetFilters} className="btn-ghost">
+            Reset Filters
+          </button>
+        </div>
       </div>
 
       {/* Filtered Data Table */}
       {filteredData && filteredData.length > 0 && (
-        <>
-          <h3 style={{ marginTop: '20px' }}>Filtered Result:</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>House No</th>
-                <th>Name</th>
-                <th>Contact</th>
-                <th>Year</th>
-                <th>Amount Paid Last Year</th>
-                <th>Total Amount Paid</th>
-                <th>Receipt Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.houseno}</td>
-                  <td>{item.name}</td>
-                  <td>{item.contact}</td>
-                  <td>{item.year}</td>
-                  <td>{item.amountPaidLastYear}</td>
-                  <td>{item.totalAmount.toFixed(2)}</td>
-                  <td style={{ color: item.receiptStatus === 'due' ? 'red' : 'green', fontWeight: 600 }}>
-                    {item.receiptStatus ? item.receiptStatus.charAt(0).toUpperCase() + item.receiptStatus.slice(1) : 'Collected'}
-                  </td>
+        <div className="relative mt-6 glass-card overflow-hidden">
+          <h3 className="p-5 pb-3 text-lg font-semibold text-slate-800">Filtered Result:</h3>
+          <div className="overflow-x-auto px-5 pb-5">
+            <table className="w-full text-sm text-left border border-slate-200 rounded-xl overflow-hidden">
+              <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white uppercase text-xs tracking-wider">
+                <tr>
+                  <th className="p-3">House No</th>
+                  <th className="p-3">Name</th>
+                  <th className="p-3">Contact</th>
+                  <th className="p-3">Year</th>
+                  <th className="p-3">Amount Paid Last Year</th>
+                  <th className="p-3">Total Amount Paid</th>
+                  <th className="p-3">Receipt Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+              </thead>
+              <tbody className="text-slate-700">
+                {filteredData.map((item, index) => (
+                  <tr key={index} className="border-b border-slate-100 transition hover:bg-blue-50/60">
+                    <td className="p-3 font-medium text-slate-900">{item.houseno}</td>
+                    <td className="p-3">{item.name}</td>
+                    <td className="p-3">{item.contact}</td>
+                    <td className="p-3">{item.year}</td>
+                    <td className="p-3">{item.amountPaidLastYear}</td>
+                    <td className="p-3 text-blue-600 font-semibold">{item.totalAmount.toFixed(2)}</td>
+                    <td className="p-3 font-semibold" style={{ color: item.receiptStatus === 'due' ? '#f87171' : '#34d399' }}>
+                      {item.receiptStatus ? item.receiptStatus.charAt(0).toUpperCase() + item.receiptStatus.slice(1) : 'Collected'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* Block Filter Table */}
       {blockFilterResults.length > 0 && (
-        <>
-          <h3 style={{ marginTop: '20px' }}>
-            Total Subscription for Block {selectedBlock}: ₹{totalBlockAmount.toFixed(2)}
+        <div className="relative mt-6 glass-card overflow-hidden">
+          <h3 className="p-5 pb-3 text-lg font-semibold text-slate-800">
+            Total Subscription for Block {selectedBlock}: <span className="neon-text">₹{totalBlockAmount.toFixed(2)}</span>
           </h3>
-          <table>
-            <thead>
-              <tr>
-                <th>House No</th>
-                <th>Name</th>
-                <th>Subscription Total Amount</th>
-                <th>Date and time of transaction</th>
-              </tr>
-            </thead>
-            <tbody>
-              {blockFilterResults.map((item, index) => (
-                <tr key={index}>
-                  <td>{item.houseno}</td>
-                  <td>{item.name}</td>
-                  <td>{item.subscriptionamount}</td>
-                  <td>
-                    {item.transaction_timestamp
-                      ? item.transaction_timestamp.split('T')[0]
-                      : ''}
-                  </td>
+          <div className="overflow-x-auto px-5 pb-5">
+            <table className="w-full text-sm text-left border border-slate-200 rounded-xl overflow-hidden">
+              <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white uppercase text-xs tracking-wider">
+                <tr>
+                  <th className="p-3">House No</th>
+                  <th className="p-3">Name</th>
+                  <th className="p-3">Subscription Total Amount</th>
+                  <th className="p-3">Date and time of transaction</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
+              </thead>
+              <tbody className="text-slate-700">
+                {blockFilterResults.map((item, index) => (
+                  <tr key={index} className="border-b border-slate-100 transition hover:bg-blue-50/60">
+                    <td className="p-3 font-medium text-slate-900">{item.houseno}</td>
+                    <td className="p-3">{item.name}</td>
+                    <td className="p-3 text-blue-600 font-semibold">{item.subscriptionamount}</td>
+                    <td className="p-3">
+                      {item.transaction_timestamp
+                        ? item.transaction_timestamp.split('T')[0]
+                        : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {/* Modal for no houseNo/name found */}
       {showModal && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <p>No house number found.</p>
-            <button onClick={closeModal}>Close</button>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm glass-card p-6 text-center animate-fadeIn">
+            <p className="text-slate-700 mb-5">No house number found.</p>
+            <button onClick={closeModal} className="btn-neon w-full">Close</button>
           </div>
         </div>
       )}

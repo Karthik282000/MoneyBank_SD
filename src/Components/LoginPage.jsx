@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import './LoginPage.css';
+// import './LoginPage.css';
 import { API_BASE_URL } from './Constants.jsx';
 
 
@@ -170,265 +170,232 @@ export default function LoginPage({ onLogin }) {
   /* ──────────────────────────────────────────────────────────────────────────── */
 
   return (
+  <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden px-4 py-8">
 
-    <div className="login-page">
+    {/* Ambient animated glow blobs */}
+    <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-400/25 blur-3xl animate-floatBlob" />
+    <div className="pointer-events-none absolute -bottom-32 -right-20 h-96 w-96 rounded-full bg-indigo-400/25 blur-3xl animate-floatBlob" style={{ animationDelay: '4s' }} />
+    <div className="pointer-events-none absolute inset-0 bg-grid-faint [background-size:48px_48px] opacity-40" />
 
-      {/* Animated futuristic background */}
-      <div className="background-animation"></div>
+    <div className="relative w-full max-w-5xl grid md:grid-cols-2 rounded-3xl overflow-hidden glass shadow-neon">
 
-      <div className="login-container">
+      {/* LEFT SIDE (INFO PANEL) */}
+      <div className="hidden md:flex relative bg-gradient-to-br from-blue-600 via-indigo-600 to-sky-600 text-white p-10 flex-col justify-center overflow-hidden">
+        <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-sky-300/40 blur-2xl animate-glowPulse" />
 
-        {/* Header */}
-        <div className="login-header">
+        <span className="mb-3 inline-flex w-fit items-center gap-2 rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs uppercase tracking-[0.3em] text-blue-50">
+          Portal
+        </span>
+        <h1 className="text-5xl font-bold mb-4 leading-tight">
+          SD<span className="text-sky-200">App</span>
+        </h1>
+        <p className="text-lg mb-4 text-blue-50">
+          Sarbojanin Durgotsab Management System
+        </p>
 
-          <h1>SDApp Portal</h1>
-          <p>Sarbojanin Durgotsab Management System</p>
+        <p className="text-sm text-blue-100 mb-6 leading-relaxed">
+          Manage subscriptions, donations, and receipts for Durga Puja with ease.
+          A complete digital platform for community celebration.
+        </p>
 
-        </div>
+        <ul className="space-y-3 text-sm">
+          {['Digital Receipt Generation', 'Subscription Tracking', 'Block-based Access Control', 'Admin Dashboard'].map(item => (
+            <li key={item} className="flex items-center gap-3 text-blue-50">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-white text-xs shadow-[0_0_12px_rgba(255,255,255,0.4)]">✓</span>
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
 
-        {/* Tabs */}
-        <div className="button-group">
+      {/* RIGHT SIDE (FORM) */}
+      <div className="flex items-center justify-center p-6 md:p-10 bg-white/70">
+        <div className="w-full max-w-md">
 
-          {['login', 'add', 'update'].map(tab => (
+          {/* HEADER */}
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold neon-text">Welcome</h2>
+            <p className="text-sm text-slate-500 mt-1">Login to continue</p>
+          </div>
 
-            <button
-              key={tab}
-              className={activeTab === tab ? 'active' : ''}
-              onClick={() => setActiveTab(tab)}
-            >
-
-              {tab === 'login'
-                ? 'Login'
-                : tab === 'add'
+          {/* TABS */}
+          <div className="flex mb-6 p-1 rounded-xl bg-slate-100 border border-slate-200">
+            {['login', 'add', 'update'].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-all duration-300 ${
+                  activeTab === tab
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-glow'
+                    : 'text-slate-600 hover:text-blue-700'
+                }`}
+              >
+                {tab === 'login'
+                  ? 'Login'
+                  : tab === 'add'
                   ? 'Add User'
                   : 'Update User'}
+              </button>
+            ))}
+          </div>
 
-            </button>
+          {/* LOGIN TAB */}
+          {activeTab === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4 animate-fadeIn">
 
-          ))}
+              <div>
+                <label className="text-sm text-slate-600">Email</label>
+                <input
+                  type="email"
+                  className="input-neon mt-1"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                />
+              </div>
 
-        </div>
+              <div>
+                <label className="text-sm text-slate-600">Password</label>
+                <input
+                  type="password"
+                  className="input-neon mt-1"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                />
+              </div>
 
-        {/* LOGIN TAB */}
-        {activeTab === 'login' && (
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-neon w-full"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></span>
+                    Logging in...
+                  </>
+                ) : (
+                  "Login"
+                )}
+              </button>
 
-          <form onSubmit={handleLogin}>
+            </form>
+          )}
 
-            <div>
+          {/* ADD USER TAB */}
+          {activeTab === 'add' && (
+            <div className="space-y-3 animate-fadeIn">
 
-              <label>Email</label>
-
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-              />
-
-            </div>
-
-            <div>
-
-              <label>Password</label>
-
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                required
-              />
-
-            </div>
-
-            <button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <span className="loader"></span> Logging in...
-                </>
-              ) : (
-                "Login"
-              )}
-            </button>
-
-          </form>
-
-        )}
-
-        {/* ADD USER TAB */}
-        {activeTab === 'add' && (
-
-          <section className="add-user-container">
-
-            <h3>Add New User</h3>
-
-            <div>
-
-              <label>Master Password</label>
+              <h3 className="text-lg font-semibold text-slate-800">Add User</h3>
 
               <input
                 type="password"
+                placeholder="Master Password"
+                className="input-neon"
                 value={masterPassword}
                 onChange={e => setMasterPassword(e.target.value)}
               />
 
-            </div>
-
-            <div>
-
-              <label>Email</label>
-
               <input
                 type="email"
+                placeholder="Email"
+                className="input-neon"
                 value={newUser.email}
                 onChange={e =>
                   setNewUser(prev => ({ ...prev, email: e.target.value }))
                 }
               />
 
-            </div>
-
-            <div>
-
-              <label>Password</label>
-
               <input
                 type="password"
+                placeholder="Password"
+                className="input-neon"
                 value={newUser.password}
                 onChange={e =>
                   setNewUser(prev => ({ ...prev, password: e.target.value }))
                 }
               />
 
+              <div>
+                <p className="text-sm text-slate-600 mb-2">Allowed Blocks</p>
+                <div className="flex flex-wrap gap-2">
+                  {BLOCK_OPTIONS.map(opt => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => toggleBlock(setNewUser)(opt)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                        newUser.blocks.includes(opt)
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-glow'
+                          : 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={handleAddUser}
+                disabled={loading}
+                className="btn-neon w-full"
+              >
+                {loading ? "Creating..." : "Create User"}
+              </button>
+
             </div>
+          )}
 
-            <div className="block-checkboxes">
+          {/* UPDATE USER TAB */}
+          {activeTab === 'update' && (
+            <div className="space-y-3 animate-fadeIn">
 
-              <label>Allowed Blocks</label>
-
-              {BLOCK_OPTIONS.map(opt => (
-
-                <label key={opt}>
-
-                  <input
-                    type="checkbox"
-                    checked={newUser.blocks.includes(opt)}
-                    onChange={() => toggleBlock(setNewUser)(opt)}
-                    disabled={
-                      newUser.blocks.includes('ALLBLOCKS') && opt !== 'ALLBLOCKS'
-                    }
-                  />
-
-                  {opt}
-
-                </label>
-
-              ))}
-
-            </div>
-
-            <button onClick={handleAddUser} disabled={loading}>
-              {loading ? (
-                <>
-                  <span className="loader"></span> Creating...
-                </>
-              ) : (
-                "Create User"
-              )}
-            </button>
-
-          </section>
-
-        )}
-
-        {/* UPDATE USER TAB */}
-        {activeTab === 'update' && (
-
-          <section className="update-user-container">
-
-            <h3>Update User</h3>
-
-            <div>
-
-              <label>Master Password</label>
+              <h3 className="text-lg font-semibold text-slate-800">Update User</h3>
 
               <input
                 type="password"
+                placeholder="Master Password"
+                className="input-neon"
                 value={masterPassword}
                 onChange={e => setMasterPassword(e.target.value)}
               />
 
-            </div>
-
-            <div>
-
-              <label>New Email</label>
-
               <input
                 type="email"
+                placeholder="Email"
+                className="input-neon"
                 value={updateUser.email}
                 onChange={e =>
                   setUpdateUser(prev => ({ ...prev, email: e.target.value }))
                 }
               />
 
-            </div>
-
-            <div>
-
-              <label>New Password</label>
-
               <input
                 type="password"
+                placeholder="Password"
+                className="input-neon"
                 value={updateUser.password}
                 onChange={e =>
                   setUpdateUser(prev => ({ ...prev, password: e.target.value }))
                 }
               />
 
-            </div>
-
-            <div className="block-checkboxes">
-
-              <label>Allowed Blocks</label>
-
-              {BLOCK_OPTIONS.map(opt => (
-
-                <label key={opt}>
-
-                  <input
-                    type="checkbox"
-                    checked={updateUser.blocks.includes(opt)}
-                    onChange={() => toggleBlock(setUpdateUser)(opt)}
-                    disabled={
-                      updateUser.blocks.includes('ALLBLOCKS') && opt !== 'ALLBLOCKS'
-                    }
-                  />
-
-                  {opt}
-
-                </label>
-
-              ))}
+              <button
+                onClick={handleUpdateUser}
+                disabled={loading}
+                className="btn-neon w-full !from-indigo-600 !to-violet-600"
+              >
+                {loading ? "Updating..." : "Update User"}
+              </button>
 
             </div>
+          )}
 
-            <button onClick={handleUpdateUser} disabled={loading}>
-              {loading ? (
-                <>
-                  <span className="loader"></span> Updating...
-                </>
-              ) : (
-                "Update User"
-              )}
-            </button>
-
-          </section>
-
-        )}
-
+        </div>
       </div>
-
     </div>
-
-  );
+  </div>
+);
 }

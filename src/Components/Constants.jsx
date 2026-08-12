@@ -1,1 +1,1 @@
-export const API_BASE_URL = 'https://moneybank-sd.onrender.com';
+export const API_BASE_URL = 'http://localhost:5000';
