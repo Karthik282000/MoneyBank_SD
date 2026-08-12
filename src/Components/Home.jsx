@@ -7,10 +7,10 @@ import './Home.css';
 import { API_BASE_URL } from './Constants.jsx';
 import { FiCalendar } from "react-icons/fi";
 
-const COLORS = [
-  '#0088FE', '#00C49F', '#FF8042', '#FFBB28',
-  '#A28CFE', '#FF4F81', '#50C9CE', '#4caf50', '#ff3d00'
-];
+// const COLORS = [
+//   '#0088FE', '#00C49F', '#FF8042', '#FFBB28',
+//   '#A28CFE', '#FF4F81', '#50C9CE', '#4caf50', '#ff3d00'
+// ];
 
 // Premium gradient stop pairs used to paint the donut slices (presentation only)
 const GRADIENTS = [

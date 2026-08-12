@@ -71,7 +71,7 @@ function FormComponent({ allowedBlocks }) {
   const [allData, setAllData] = useState([]);
   // const [submitEnabled, setSubmitEnabled] = useState(true);
   const [showCreateButton, setShowCreateButton] = useState(false);
-  const [showQR, setShowQR] = useState(false);
+  const [,setShowQR] = useState(false);
   const [showModal, setShowModal] = useState(false);
   // const [searchBy, setSearchBy] = useState('');
   const [showConfirmInactive, setShowConfirmInactive] = useState(false);
