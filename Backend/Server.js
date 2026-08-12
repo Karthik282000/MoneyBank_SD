@@ -445,64 +445,6 @@ function buildReceiptSlug(receiptData = {}) {
   return parts.join('-') || slugify(receiptData.receiptNo) || 'receipt';
 }
 
-// A small, mobile-friendly viewer page that frames the receipt image nicely
-function buildReceiptViewerHtml(receiptData = {}, imageUrl = '') {
-  const title = `Receipt ${escapeXml(receiptData.receiptNo)} — ${escapeXml(receiptData.name)}`;
-  const subtitle = [
-    receiptData.name ? escapeXml(receiptData.name) : '',
-    (receiptData.houseNo || receiptData.address) ? `House ${escapeXml(receiptData.houseNo || receiptData.address)}` : '',
-    receiptData.receiptNo ? `No. ${escapeXml(receiptData.receiptNo)}` : '',
-  ].filter(Boolean).join(' · ');
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; padding: 18px;
-      display: flex; flex-direction: column; align-items: center;
-      background: linear-gradient(135deg, #eef4ff 0%, #e6ecff 50%, #f5f8ff 100%);
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    }
-    .head { text-align: center; margin: 8px 0 18px; }
-    .head h1 { margin: 0; font-size: 20px; color: #1e3a8a; }
-    .head p { margin: 6px 0 0; font-size: 14px; color: #475569; }
-    .card {
-      width: 100%; max-width: 880px; background: #fff; border-radius: 18px; padding: 12px;
-      box-shadow: 0 24px 60px -12px rgba(37, 99, 235, 0.4); border: 1px solid rgba(191, 219, 254, 0.7);
-    }
-    .card img { width: 100%; height: auto; display: block; border-radius: 10px; }
-    .actions { margin: 18px 0 6px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-    a.btn {
-      text-decoration: none; padding: 12px 22px; border-radius: 12px; font-weight: 700; font-size: 14px;
-      color: #fff; background: linear-gradient(90deg, #2563eb, #4f46e5);
-      box-shadow: 0 10px 24px -8px rgba(37, 99, 235, 0.6);
-    }
-    a.btn.secondary { color: #1d4ed8; background: #fff; border: 1px solid #bfdbfe; box-shadow: none; }
-    .foot { margin-top: 10px; font-size: 12px; color: #64748b; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="head">
-    <h1>Sarbojanin Durgotsab 2026 — Receipt</h1>
-    <p>${subtitle}</p>
-  </div>
-  <div class="card">
-    <img src="${escapeXml(imageUrl)}" alt="${title}" />
-  </div>
-  <div class="actions">
-    <a class="btn" href="${escapeXml(imageUrl)}" download="Receipt-${escapeXml(receiptData.receiptNo)}.svg">Download Receipt</a>
-    <a class="btn secondary" href="${escapeXml(imageUrl)}" target="_blank" rel="noopener">Open Full Image</a>
-  </div>
-  <div class="foot">Lake Gardens People's Association</div>
-</body>
-</html>`;
-}
-
 // Generic upload helper → returns the public URL of the stored object
 async function uploadObjectToSupabase(objectPath, buffer, contentType) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -539,11 +481,10 @@ async function saveReceiptImage(receiptData, config = {}) {
     const imageUrl = await uploadObjectToSupabase(`${base}.svg`, Buffer.from(svg, 'utf-8'), 'image/svg+xml');
     if (!imageUrl) return { imageUrl: null, viewUrl: null, svg };
 
-    const html = buildReceiptViewerHtml(receiptData, imageUrl);
-    const viewUrl = await uploadObjectToSupabase(`${base}.html`, Buffer.from(html, 'utf-8'), 'text/html; charset=utf-8');
-
-    console.log('✅ Receipt uploaded — image:', imageUrl, '| view:', viewUrl);
-    return { imageUrl, viewUrl: viewUrl || imageUrl, svg };
+    // The customer link is the SVG itself (openable/downloadable on any device).
+    // viewUrl mirrors the SVG so any client (even a cached one) always gets .svg.
+    console.log('✅ Receipt uploaded — image:', imageUrl);
+    return { imageUrl, viewUrl: imageUrl, svg };
   } catch (err) {
     console.error('❌ Receipt image upload failed:', err.response?.data || err.message);
     return { imageUrl: null, viewUrl: null, svg };
