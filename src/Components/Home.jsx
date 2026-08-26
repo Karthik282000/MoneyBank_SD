@@ -8,10 +8,23 @@ import './Home.css';
 import { API_BASE_URL } from './Constants.jsx';
 import { FiCalendar } from "react-icons/fi";
 
-// const COLORS = [
-//   '#0088FE', '#00C49F', '#FF8042', '#FFBB28',
-//   '#A28CFE', '#FF4F81', '#50C9CE', '#4caf50', '#ff3d00'
-// ];
+function amountToWords(num) {
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  function toWords(n) {
+    n = Math.floor(Number(n));
+    if (!n || Number.isNaN(n)) return '';
+    if (n < 10) return ones[n];
+    if (n < 20) return teens[n - 10];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + toWords(n % 100) : '');
+    if (n < 100000) return toWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + toWords(n % 1000) : '');
+    if (n < 10000000) return toWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + toWords(n % 100000) : '');
+    return toWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + toWords(n % 10000000) : '');
+  }
+  return toWords(num).toUpperCase();
+}
 
 // Premium gradient stop pairs used to paint the donut slices (presentation only)
 const GRADIENTS = [
@@ -536,7 +549,7 @@ function Home({ allowedBlocks = [] }) {
                       <p>
                         The sum of Rupees{" "}
                         <span className="font-bold text-gray-800">
-                          {selectedReceipt.amount} only
+                          {amountToWords(selectedReceipt.amount) || selectedReceipt.amount} only
                         </span>
                       </p>
 

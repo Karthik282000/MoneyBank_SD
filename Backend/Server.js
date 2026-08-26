@@ -235,6 +235,29 @@ async function generateReceiptNo(client) {
   return `E-${nextNum.toString().padStart(6, '0')}`;
 }
 
+// Peek the next receipt number WITHOUT consuming the sequence (for form preview).
+async function peekNextReceiptNo() {
+  try {
+    const res = await pool.query(`
+      SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END AS seq
+      FROM receipt_seq
+    `);
+    const nextNum = Number(res.rows[0]?.seq || 1);
+    return `E-${nextNum.toString().padStart(6, '0')}`;
+  } catch (err) {
+    console.warn('Could not peek next receipt number:', err.message);
+    return '';
+  }
+}
+
+app.get('/api/next-receipt-no', async (req, res) => {
+  try {
+    const receiptNo = await peekNextReceiptNo();
+    res.json({ receiptNo });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to peek next receipt number' });
+  }
+});
 
 
 function buildMailHtml(formData) {
@@ -334,7 +357,7 @@ function buildReceiptHtml(receiptData = {}, config = {}) {
       of <span class="receipt-value">${receiptData.address || ""}</span>
     </div>
     <div class="receipt-label">
-      The sum of Rupees <span class="receipt-value">${receiptData.amountWords || ""} only</span>
+      The sum of Rupees <span class="receipt-value">${resolveAmountWords(receiptData)} only</span>
     </div>
     <div class="receipt-label">
       by <span class="receipt-value">${receiptData.paymentMode || ""}</span>
@@ -505,7 +528,7 @@ ${dueSection}
 
   <text x="40" y="250" font-size="17" fill="${blue}" font-style="italic">Received with thanks from <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.name)}</tspan></text>
   <text x="40" y="282" font-size="17" fill="${blue}" font-style="italic">of <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.address)}</tspan></text>
-  <text x="40" y="314" font-size="17" fill="${blue}" font-style="italic">The sum of Rupees <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.amountWords)} only</tspan></text>
+  <text x="40" y="314" font-size="17" fill="${blue}" font-style="italic">The sum of Rupees <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(resolveAmountWords(receiptData))} only</tspan></text>
   <text x="40" y="346" font-size="17" fill="${blue}">${escapeXml(refLine)}</text>
   <text x="40" y="378" font-size="15" fill="${blue}" font-style="italic">as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.</text>
 
@@ -590,20 +613,40 @@ async function saveReceiptImage(receiptData, config = {}) {
   }
 }
 
-// Convert a number to words (Indian rupees) — used for backfilling old receipts
+// Convert a number to words (Indian system). Returns UPPERCASE for the receipt line
+// e.g. 12 → "TWELVE", 1250 → "ONE THOUSAND TWO HUNDRED FIFTY".
 function amountToWords(num) {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
   const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  num = Number(num);
-  if (!num) return '';
-  if (num < 10) return ones[num];
-  if (num < 20) return teens[num - 10];
-  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 ? ' ' + ones[num % 10] : '');
-  if (num < 1000) return ones[Math.floor(num / 100)] + ' Hundred' + (num % 100 ? ' ' + amountToWords(num % 100) : '');
-  if (num < 100000) return amountToWords(Math.floor(num / 1000)) + ' Thousand' + (num % 1000 ? ' ' + amountToWords(num % 1000) : '');
-  if (num < 10000000) return amountToWords(Math.floor(num / 100000)) + ' Lakh' + (num % 100000 ? ' ' + amountToWords(num % 100000) : '');
-  return String(num);
+
+  function toWords(n) {
+    n = Math.floor(Number(n));
+    if (!n || Number.isNaN(n)) return '';
+    if (n < 10) return ones[n];
+    if (n < 20) return teens[n - 10];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '');
+    if (n < 1000) return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' + toWords(n % 100) : '');
+    if (n < 100000) return toWords(Math.floor(n / 1000)) + ' Thousand' + (n % 1000 ? ' ' + toWords(n % 1000) : '');
+    if (n < 10000000) return toWords(Math.floor(n / 100000)) + ' Lakh' + (n % 100000 ? ' ' + toWords(n % 100000) : '');
+    return toWords(Math.floor(n / 10000000)) + ' Crore' + (n % 10000000 ? ' ' + toWords(n % 10000000) : '');
+  }
+
+  return toWords(num).toUpperCase();
+}
+
+// Resolve amount-in-words for a receipt. If a caller already passed real words, keep
+// them (uppercased); if they passed a bare number (or empty), convert from amountFigure.
+function resolveAmountWords(receiptData = {}) {
+  const raw = receiptData.amountWords;
+  const figure = receiptData.amountFigure;
+  if (raw != null && String(raw).trim() !== '' && /[a-zA-Z]/.test(String(raw))) {
+    return String(raw).toUpperCase();
+  }
+  const n = (raw != null && String(raw).trim() !== '' && !Number.isNaN(Number(raw)))
+    ? Number(raw)
+    : Number(figure);
+  return amountToWords(n) || String(figure ?? '');
 }
 
 // Backfill receipt images for existing rows that don't have a URL yet.
@@ -885,7 +928,7 @@ const receiptPayload = {
   houseNo,
   address: `${houseNo}${block ? ', Block ' + block : ''}`,
   amountFigure: amountPaid,
-  amountWords: amountPaid,
+  amountWords: amountToWords(amountPaid),
   paymentMode,
   bhog: bhogCount,
   status: receiptStatus || 'due',
@@ -1009,7 +1052,7 @@ const receiptPayload = {
   houseNo,
   address: `${houseNo}${block ? ', Block ' + block : ''}`,
   amountFigure: amountPaid,
-  amountWords: amountPaid,
+  amountWords: amountToWords(amountPaid),
   paymentMode,
   bhog: bhogCount,
   status: receiptStatus || 'due',
@@ -1661,7 +1704,7 @@ app.post('/api/complete-due', async (req, res) => {
       houseNo: tx.houseno,
       address: `${tx.houseno}${tx.block ? ', Block ' + tx.block : ''}`,
       amountFigure: existing.amount ?? tx.subscriptionamount,
-      amountWords: existing.amount ?? tx.subscriptionamount,
+      amountWords: amountToWords(existing.amount ?? tx.subscriptionamount),
       paymentMode,
       bhog: bhogCount ?? tx.bhog,
       status: 'collected',
@@ -1745,7 +1788,7 @@ app.get('/api/receipt-svg/:receiptNo', async (req, res) => {
       houseNo: row.houseno,
       address: `${row.houseno}${row.block ? ', Block ' + row.block : ''}`,
       amountFigure: row.amount,
-      amountWords: row.amount,
+      amountWords: amountToWords(row.amount),
       paymentMode: row.payment_mode || '',
       bhog: row.bhog ?? 0,
       status: row.status || 'collected',

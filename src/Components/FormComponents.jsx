@@ -12,14 +12,18 @@ function numberToWords(num) {
   const teens = [
     'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'
   ];
-  if (!num) return '';
-  num = Number(num);
-  if (num < 10) return ones[num];
-  if (num < 20) return teens[num - 10];
-  if (num < 100) return tens[Math.floor(num / 10)] + (num % 10 !== 0 ? " " + ones[num % 10] : "");
-  if (num < 1000) return ones[Math.floor(num / 100)] + " Hundred" + (num % 100 !== 0 ? " " + numberToWords(num % 100) : "");
-  if (num < 10000) return ones[Math.floor(num / 1000)] + " Thousand" + (num % 1000 !== 0 ? " " + numberToWords(num % 1000) : "");
-  return num.toString();
+  function toWords(n) {
+    n = Math.floor(Number(n));
+    if (!n || Number.isNaN(n)) return '';
+    if (n < 10) return ones[n];
+    if (n < 20) return teens[n - 10];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? " " + ones[n % 10] : "");
+    if (n < 1000) return ones[Math.floor(n / 100)] + " Hundred" + (n % 100 !== 0 ? " " + toWords(n % 100) : "");
+    if (n < 100000) return toWords(Math.floor(n / 1000)) + " Thousand" + (n % 1000 !== 0 ? " " + toWords(n % 1000) : "");
+    if (n < 10000000) return toWords(Math.floor(n / 100000)) + " Lakh" + (n % 100000 !== 0 ? " " + toWords(n % 100000) : "");
+    return toWords(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 !== 0 ? " " + toWords(n % 10000000) : "");
+  }
+  return toWords(num).toUpperCase();
 }
 
 function buildReceiptData(formData, receiptNo) {
@@ -71,6 +75,7 @@ function FormComponent({ allowedBlocks }) {
   // When arriving from the Home "Complete" button, we finalize an existing DUE
   // entry instead of creating a brand-new transaction.
   const [completingDue, setCompletingDue] = useState(false);
+  const completingDueRef = useRef(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -151,11 +156,27 @@ function FormComponent({ allowedBlocks }) {
     }
   };
 
+  // Preview the next receipt number that will be assigned on save (does not consume it).
+  const fetchNextReceiptNo = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/next-receipt-no`);
+      if (res.data?.receiptNo && !completingDueRef.current) {
+        setFormData(prev => ({ ...prev, receiptNo: res.data.receiptNo }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch next receipt no", err);
+    }
+  };
+
   // 🚀 INITIAL LOAD ONLY — no fetchFinancialSummary() here (needs a houseNo)
   useEffect(() => {
     fetchFinancialYear();
     fetchData();
     fetchConfig();
+    // Don't overwrite a due-completion receipt number with the next-seq preview
+    if (!location.state?.completeDue) {
+      fetchNextReceiptNo();
+    }
     // eslint-disable-next-line
   }, [allowedBlocks]);
 
@@ -182,6 +203,7 @@ function FormComponent({ allowedBlocks }) {
       receiptNo: due.receipt_no || ''
     }));
     setCompletingDue(true);
+    completingDueRef.current = true;
     setShowCreateButton(false);
 
     // Clear router state so a refresh doesn't re-trigger completion mode
@@ -351,15 +373,18 @@ function FormComponent({ allowedBlocks }) {
         block: '',
         receiptStatus: 'collected',
         bhog: '',
-        receiptNo: ''
+        receiptNo: prev.receiptNo || '', // keep next-receipt preview
+        amountPaidThisYear: '',
+        receiptsThisYear: '',
       }));
 
       setFilteredSuggestions([]);
       setShowDropdown(false);
-      // setSubmitEnabled(true);
       setShowCreateButton(false);
       setShowQR(false);
       setCompletingDue(false);
+      completingDueRef.current = false;
+      fetchNextReceiptNo();
 
       return;
     }
@@ -474,6 +499,8 @@ function FormComponent({ allowedBlocks }) {
       block: suggestion.block || '',
       amountPaidLastYear: suggestion.amountpaidlastyear || '',
       previousYearReceiptNumber: suggestion.previousyearreceiptnumber || '',
+      amountPaidThisYear: '',
+      receiptsThisYear: '',
 
       amountPaid: '',
       yearOfPayment: prev.yearOfPayment,
@@ -485,14 +512,14 @@ function FormComponent({ allowedBlocks }) {
         suggestion.receiptstatus
           ? suggestion.receiptstatus.toLowerCase() === 'due' ? 'due' : 'collected'
           : 'collected',
-      receiptNo: suggestion.receipt_no || ''
-      // <-- Set receiptNo if available
+      // Keep the previewed NEXT receipt number — do NOT copy past receipts here
+      receiptNo: prev.receiptNo || ''
     }));
     setShowDropdown(false);
-    // setSubmitEnabled(false);
     setShowCreateButton(false);
-    // ❌ REMOVED: fetchFinancialYear() — the year hasn't changed since page load
     fetchFinancialSummary(suggestion.houseno);
+    // Refresh next-receipt preview in case another collector saved meanwhile
+    if (!completingDueRef.current) fetchNextReceiptNo();
   };
 
   const handleToggleInactive = async () => {
@@ -594,6 +621,7 @@ function FormComponent({ allowedBlocks }) {
         }
 
         setCompletingDue(false);
+        completingDueRef.current = false;
         setTimeout(() => {
           resetForm();
           navigate('/home');
@@ -607,7 +635,13 @@ function FormComponent({ allowedBlocks }) {
       const response = await axios.post(`${API_BASE_URL}/api/save-transaction`, payload);
 
       const receiptNo = response.data.receiptNo || "";
-      setFormData(prev => ({ ...prev, receiptNo }));
+      setFormData(prev => ({
+        ...prev,
+        receiptNo,
+        receiptsThisYear: prev.receiptsThisYear
+          ? `${receiptNo}, ${prev.receiptsThisYear}`
+          : receiptNo,
+      }));
 
       // 🔥 OPTIMISTIC LOCAL UPDATE — patch the matching row in allData
       // instead of refetching the entire dataset from the DB.
@@ -647,6 +681,7 @@ function FormComponent({ allowedBlocks }) {
       setTimeout(() => {
         // ❌ REMOVED: fetchData() and fetchFinancialYear() — handled locally above
         resetForm();
+        fetchNextReceiptNo();
       }, 1500);
 
     } catch (error) {
@@ -669,7 +704,13 @@ function FormComponent({ allowedBlocks }) {
       const response = await axios.post(`${API_BASE_URL}/api/create-new-house`, payload);
 
       const receiptNo = response.data.receiptNo || "";
-      setFormData(prev => ({ ...prev, receiptNo }));
+      setFormData(prev => ({
+        ...prev,
+        receiptNo,
+        receiptsThisYear: prev.receiptsThisYear
+          ? `${receiptNo}, ${prev.receiptsThisYear}`
+          : receiptNo,
+      }));
 
       // 🔥 APPEND NEW ROW LOCALLY instead of refetching everything
       setAllData(prev => [
@@ -727,13 +768,14 @@ function FormComponent({ allowedBlocks }) {
       bhog: '',
       receiptNo: '',
       amountPaidThisYear: '',
-      receiptsThisYear: '',  // Reset receiptNo
+      receiptsThisYear: '',
     }));
     setFilteredSuggestions([]);
     setShowDropdown(false);
-    // setSubmitEnabled(true);
     setShowCreateButton(false);
     setShowQR(false);
+    setCompletingDue(false);
+    completingDueRef.current = false;
   };
 
   return (
@@ -822,12 +864,13 @@ function FormComponent({ allowedBlocks }) {
           {/* Receipt No */}
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Receipt No
+              Receipt No {completingDue ? '' : <span className="text-slate-400 font-normal text-xs">(next)</span>}
             </label>
             <input
               type="text"
               value={formData.receiptNo || ""}
               readOnly
+              placeholder="Assigned on save"
               className="w-full rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 font-semibold text-blue-700"
             />
           </div>
@@ -839,8 +882,9 @@ function FormComponent({ allowedBlocks }) {
             </label>
             <input
               type="text"
-              value={formData.receiptsThisYear}
+              value={formData.receiptsThisYear || ""}
               readOnly
+              placeholder="None yet"
               className="w-full rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-blue-700"
             />
           </div>
