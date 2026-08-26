@@ -56,6 +56,22 @@ export default function LoginPage({ onLogin }) {
 
   const isAdmin = () => masterPassword === 'masterpassword123';
 
+  // Load a user's existing blocks so they appear pre-checked in the Update tab
+  const loadUserBlocks = async (emailToLoad) => {
+    const target = (emailToLoad || '').trim();
+    if (!target) return;
+    try {
+      const { data } = await axios.get(`${API_BASE_URL}/api/user-blocks`, {
+        params: { email: target }
+      });
+      if (data.found) {
+        setUpdateUser(prev => ({ ...prev, blocks: Array.isArray(data.blocks) ? data.blocks : [] }));
+      }
+    } catch (err) {
+      console.error('Could not load user blocks:', err);
+    }
+  };
+
   /* ──────────────────────────────────────────────────────────────────────────── */
   /* LOGIN                                                                       */
   /* ──────────────────────────────────────────────────────────────────────────── */
@@ -76,7 +92,6 @@ export default function LoginPage({ onLogin }) {
       const { data } = await axios.post(`${API_BASE_URL}/api/login`, { email, password });
 
       if (data.success) {
-        localStorage.setItem('allowedBlocks', JSON.stringify(data.allowedBlocks ?? []));
         onLogin(email, data.allowedBlocks ?? []);
         navigate("/home");
       } else {
@@ -370,17 +385,40 @@ export default function LoginPage({ onLogin }) {
                 onChange={e =>
                   setUpdateUser(prev => ({ ...prev, email: e.target.value }))
                 }
+                onBlur={e => loadUserBlocks(e.target.value)}
               />
 
               <input
                 type="password"
-                placeholder="Password"
+                placeholder="New Password"
                 className="input-neon"
                 value={updateUser.password}
                 onChange={e =>
                   setUpdateUser(prev => ({ ...prev, password: e.target.value }))
                 }
               />
+
+              <div>
+                <p className="text-sm text-slate-600 mb-2">
+                  Allowed Blocks <span className="text-slate-400">(existing access is pre-selected)</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {BLOCK_OPTIONS.map(opt => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => toggleBlock(setUpdateUser)(opt)}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                        updateUser.blocks.includes(opt)
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-glow'
+                          : 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <button
                 onClick={handleUpdateUser}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import './App.css';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 
@@ -8,6 +9,27 @@ import FormComponent from './Components/FormComponents.jsx';
 import SearchPeople from './Components/SearchPeople.jsx';
 import AdminConfig from "./Components/AdminConfig.jsx";
 import DashboardLayout from "./Layout/DashboardLayout.jsx";
+import { API_BASE_URL } from './Components/Constants.jsx';
+
+// Normalize allowed_blocks into a clean JS array regardless of how it arrives:
+//   ['A','B']  |  '["A","B"]'  |  '{"A","B"}'  |  '{A,B}'  |  'A,B'
+function parseBlocks(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value == null) return [];
+  if (typeof value === 'string') {
+    const s = value.trim();
+    try {
+      const j = JSON.parse(s);
+      if (Array.isArray(j)) return j.filter(Boolean);
+    } catch { /* not JSON — fall through to Postgres-array parsing */ }
+    return s
+      .replace(/^\{|\}$/g, '')
+      .split(',')
+      .map(x => x.replace(/["']/g, '').trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
 function AppWrapper() {
   return (
@@ -22,38 +44,72 @@ function App() {
 
   const [loggedInUser, setLoggedInUser] = useState(null);
   const [allowedBlocks, setAllowedBlocks] = useState([]);
+  // Gate rendering until we've validated any existing session, to avoid a flicker.
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // ✅ LOAD FROM LOCAL STORAGE (IMPORTANT FIX)
+  // Restore session on load. We use sessionStorage (cleared when the browser/tab
+  // closes) AND re-validate against the server's boot id. If the server was
+  // restarted (id changed) or is unreachable, the stored session is discarded
+  // and the user must log in again.
   useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    const storedBlocks = localStorage.getItem("allowedBlocks");
+    const storedUser = sessionStorage.getItem("user");
+    const storedBlocks = sessionStorage.getItem("allowedBlocks");
+    const storedSession = sessionStorage.getItem("serverSession");
 
-    if (storedUser) {
-      setLoggedInUser(storedUser);
-      setAllowedBlocks(JSON.parse(storedBlocks || "[]"));
+    if (!storedUser) {
+      setAuthChecked(true);
+      return;
     }
+
+    axios.get(`${API_BASE_URL}/api/auth/session`)
+      .then(({ data }) => {
+        if (data?.sessionId && data.sessionId === storedSession) {
+          let restored = [];
+          try { restored = parseBlocks(JSON.parse(storedBlocks)); }
+          catch { restored = parseBlocks(storedBlocks); }
+          setLoggedInUser(storedUser);
+          setAllowedBlocks(restored);
+        } else {
+          sessionStorage.clear();
+        }
+      })
+      .catch(() => {
+        // Server unreachable / restarted → require a fresh login.
+        sessionStorage.clear();
+      })
+      .finally(() => setAuthChecked(true));
   }, []);
 
   const handleLogin = (email, blocks = []) => {
+    const normalized = parseBlocks(blocks);
     setLoggedInUser(email);
-    setAllowedBlocks(blocks);
+    setAllowedBlocks(normalized);
 
-    // ✅ SAVE LOGIN
-    localStorage.setItem("user", email);
-    localStorage.setItem("allowedBlocks", JSON.stringify(blocks));
+    sessionStorage.setItem("user", email);
+    sessionStorage.setItem("allowedBlocks", JSON.stringify(normalized));
 
-    navigate("/home");
+    // Capture the current server boot id so a later restart invalidates this session.
+    axios.get(`${API_BASE_URL}/api/auth/session`)
+      .then(({ data }) => sessionStorage.setItem("serverSession", data?.sessionId || ""))
+      .catch(() => {});
   };
 
   const handleLogout = () => {
     setLoggedInUser(null);
     setAllowedBlocks([]);
 
-    localStorage.removeItem("user");
-    localStorage.removeItem("allowedBlocks");
+    sessionStorage.clear();
 
     navigate("/");
   };
+
+  if (!authChecked) {
+    return (
+      <div className="App min-h-screen flex items-center justify-center">
+        <span className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="App">

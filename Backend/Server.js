@@ -5,12 +5,18 @@ import pkg from 'pg';
 import nodemailer from 'nodemailer';
 import axios from 'axios';
 
+import crypto from 'crypto';
+
 import dotenv from 'dotenv';
 dotenv.config();
 
 const { Pool } = pkg;
 const app = express();
 const port = process.env.PORT || 5000;
+
+// Unique id generated on every server boot. The frontend stores this at login
+// and re-validates it on load — so a server restart forces every client to log in again.
+const SERVER_SESSION_ID = crypto.randomUUID();
 
 app.use(bodyParser.json());
 app.use(cors());
@@ -48,8 +54,50 @@ async function ensureReceiptImageColumn() {
       ALTER TABLE TransactionalDetails
       ADD COLUMN IF NOT EXISTS receipt_view_url TEXT
     `);
+    // Snapshot of the signatory names as they were WHEN the receipt was created,
+    // so editing the config later never changes older receipts.
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS president TEXT`);
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS secretary1 TEXT`);
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS secretary2 TEXT`);
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS treasurer TEXT`);
+    // Optional "Bhog packets" count captured at transaction time
+    await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS bhog INTEGER`);
+    // Mirror bhog + status onto the Receipts row so the receipts list/preview can render them
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS bhog INTEGER`);
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS status TEXT`);
   } catch (err) {
     console.error('Could not ensure receipt_image_url column:', err.message);
+  }
+}
+
+// Normalize a Postgres allowed_blocks value (text[] OR a text literal like
+// '{"A","B"}') into a clean JS array, so the client always receives an array.
+function normalizeBlocks(value) {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (value == null) return [];
+  if (typeof value === 'string') {
+    const s = value.trim();
+    try {
+      const j = JSON.parse(s);
+      if (Array.isArray(j)) return j.filter(Boolean);
+    } catch { /* fall through */ }
+    return s
+      .replace(/^\{|\}$/g, '')
+      .split(',')
+      .map(x => x.replace(/["']/g, '').trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+// Fetch the current signatory config (names shown on receipts).
+async function getReceiptConfig(executor = pool) {
+  try {
+    const result = await executor.query('SELECT * FROM ReceiptConfig ORDER BY id DESC LIMIT 1');
+    return result.rows[0] || {};
+  } catch (err) {
+    console.error('Could not fetch receipt config:', err.message);
+    return {};
   }
 }
 
@@ -77,8 +125,28 @@ async function ensureReceiptsBucket() {
   }
 }
 
+// Create indexes on the hot query paths (joins/filters used by the dashboard & search)
+async function ensureIndexes() {
+  const statements = [
+    `CREATE INDEX IF NOT EXISTS idx_collection_block ON CollectionDetails (block)`,
+    `CREATE INDEX IF NOT EXISTS idx_collection_state ON CollectionDetails (state)`,
+    `CREATE INDEX IF NOT EXISTS idx_collection_receiptstatus ON CollectionDetails (receiptstatus)`,
+    `CREATE INDEX IF NOT EXISTS idx_subscription_subscriberid ON SubscriptionDetails (subscriberid)`,
+    `CREATE INDEX IF NOT EXISTS idx_transaction_subscriptionid ON TransactionalDetails (subscriptionid)`,
+    `CREATE INDEX IF NOT EXISTS idx_transaction_receiptstatus ON TransactionalDetails (receiptstatus)`,
+  ];
+  for (const sql of statements) {
+    try {
+      await pool.query(sql);
+    } catch (err) {
+      console.warn('Index ensure warning:', err.message);
+    }
+  }
+}
+
 ensureReceiptImageColumn();
 ensureReceiptsBucket();
+ensureIndexes();
 
 
 // const pool = new Pool({
@@ -247,6 +315,10 @@ function buildReceiptHtml(receiptData = {}, config = {}) {
       <div><b>No.</b> <span class="receipt-value">${receiptData.receiptNo || ""}</span></div>
       <div><b>Date:</b> <span class="receipt-value">${receiptData.date || ""}</span></div>
     </div>
+    ${String(receiptData.status || '').toLowerCase() === 'due' ? `
+    <div style="text-align:center; margin:6px 0;">
+      <span style="display:inline-block; border:2px solid #ff0000; color:#ff0000; font-weight:700; letter-spacing:2px; padding:2px 14px; border-radius:6px; background:#ffecec;">DUE</span>
+    </div>` : ""}
     <div class="receipt-header">
       <div class="receipt-title">Sarbojanin Durgotsab, 2026</div>
       <div class="receipt-org">Organised by :</div>
@@ -274,20 +346,29 @@ function buildReceiptHtml(receiptData = {}, config = {}) {
     <div class="rupee-box">
       ₹ ${receiptData.amountFigure || ""}
     </div>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:12px;">
+      <div style="font-weight:700; color:#0033cc; font-size:0.95em;">
+        Please collect your "Mahastmi Bhog" from pandal Between 1 pm to 3 pm
+      </div>
+      <div style="border:2px solid #0033cc; border-radius:4px; width:92px; height:92px; text-align:center; display:flex; flex-direction:column; justify-content:center;">
+        <div style="font-size:0.7em; font-weight:700; color:#0033cc;">BHOG PACKETS</div>
+        <div style="font-size:1.8em; font-weight:700; color:#222;">${receiptData.bhog ?? 0}</div>
+      </div>
+    </div>
     <!-- Stamp overlay (optional) -->
     <!-- <img class="stamp" src="file:///absolute/path/to/stamp.png" /> -->
     <div class="sign-row">
       <div class="sign-col">
-        <b>${config.president || 'Sarbani Basu Roy'}</b><br>
+        <b>${config.president }</b><br>
         <span class="sign-role">President</span>
       </div>
       <div class="sign-col">
-       <b>${config.secretary1 || 'Moumita Shome'}</b><br>
+       <b>${config.secretary1}</b><br>
 <b>${config.secretary2 || 'Ragesri Choudhury'}</b><br>
         <span class="sign-role">Jt. General Secretaries</span>
       </div>
       <div class="sign-col">
-        <b>${config.treasurer || "Sayan Mitra"}</b><br>
+        <b>${config.treasurer }</b><br>
         <span class="sign-role">Treasurer</span>
       </div>
     </div>
@@ -359,8 +440,7 @@ async function sendWhatsAppMessage(contactNumber, name, amount, receiptNo) {
 
 // Browser-free receipt attachment: returns an SVG image buffer of the receipt.
 async function generateReceiptSvgBuffer(receiptData) {
-  const configRes = await pool.query('SELECT * FROM ReceiptConfig LIMIT 1');
-  const config = configRes.rows[0] || {};
+  const config = await getReceiptConfig();
   const svg = buildReceiptSvg(receiptData, config);
   return Buffer.from(svg, 'utf-8');
 }
@@ -388,11 +468,30 @@ function buildReceiptSvg(receiptData = {}, config = {}) {
     ? `by ${receiptData.paymentMode || ''}  |  Ref/UTR No: ${receiptData.chequeOrDDNo}`
     : `by ${receiptData.paymentMode || ''}`;
 
+  // Always show the Mahastmi Bhog line + packet-count square under the amount
+  const bhogVal = (receiptData.bhog === null || receiptData.bhog === undefined || receiptData.bhog === '')
+    ? 0
+    : receiptData.bhog;
+  const bhogSection = `
+  <text x="40" y="468" font-size="14" fill="${blue}" font-weight="bold">Please collect your &quot;Mahastmi Bhog&quot; from pandal Between 1 pm to 3 pm</text>
+  <rect x="694" y="433" width="70" height="70" rx="8" fill="#f4f7ff" stroke="${blue}" stroke-width="1.75"/>
+  <text x="729" y="420" font-size="10" fill="${blue}" font-weight="bold" text-anchor="middle" letter-spacing="0.5">BHOG PACKETS</text>
+  <text x="729" y="486" font-size="26" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(bhogVal)}</text>
+  `;
+
+  // "DUE" is baked into the image when the receipt is saved as due
+  const isDue = String(receiptData.status || '').toLowerCase() === 'due';
+  const dueSection = isDue ? `
+  <text x="${width / 2}" y="370" font-size="140" fill="#ff0000" fill-opacity="0.12" font-weight="bold" text-anchor="middle" transform="rotate(-24 ${width / 2} 340)">DUE</text>
+  <rect x="${width / 2 - 70}" y="68" width="140" height="38" fill="#ffecec" stroke="#ff0000" stroke-width="2.5" rx="6"/>
+  <text x="${width / 2}" y="95" font-size="22" fill="#ff0000" font-weight="bold" text-anchor="middle" letter-spacing="4">DUE</text>
+  ` : '';
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Georgia, 'Times New Roman', serif">
   <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="16" y="16" width="${width - 32}" height="${height - 32}" fill="#ffffff" stroke="${blue}" stroke-width="2" stroke-dasharray="8 6" rx="8"/>
-
+${dueSection}
   <text x="40" y="60" font-size="18" fill="${blue}" font-weight="bold">No. <tspan fill="${dark}">${escapeXml(receiptData.receiptNo)}</tspan></text>
   <text x="${width - 40}" y="60" font-size="18" fill="${blue}" font-weight="bold" text-anchor="end">Date: <tspan fill="${dark}">${escapeXml(receiptData.date)}</tspan></text>
 
@@ -412,15 +511,15 @@ function buildReceiptSvg(receiptData = {}, config = {}) {
 
   <rect x="40" y="398" width="150" height="46" fill="#ffffff" stroke="${blue}" stroke-width="2" rx="7"/>
   <text x="115" y="429" font-size="22" fill="${dark}" font-weight="bold" text-anchor="middle">&#8377; ${escapeXml(receiptData.amountFigure)}</text>
-
-  <text x="130" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.president || 'Sarbani Basu Roy')}</text>
+${bhogSection}
+  <text x="130" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.president )}</text>
   <text x="130" y="580" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">President</text>
 
-  <text x="${width / 2}" y="548" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary1 || 'Moumita Shome')}</text>
-  <text x="${width / 2}" y="568" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary2 || 'Ragesri Choudhury')}</text>
+  <text x="${width / 2}" y="548" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary1 )}</text>
+  <text x="${width / 2}" y="568" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary2 )}</text>
   <text x="${width / 2}" y="588" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">Jt. General Secretaries</text>
 
-  <text x="${width - 130}" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.treasurer || 'Sayan Mitra')}</text>
+  <text x="${width - 130}" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.treasurer)}</text>
   <text x="${width - 130}" y="580" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">Treasurer</text>
 </svg>`;
 }
@@ -515,8 +614,7 @@ app.get('/api/backfill-receipt-images', async (req, res) => {
   }
 
   try {
-    const configRes = await pool.query('SELECT * FROM ReceiptConfig LIMIT 1');
-    const config = configRes.rows[0] || {};
+    const config = await getReceiptConfig();
 
     const { rows } = await pool.query(
       `SELECT receipt_no, houseno, name, amount, payment_mode, created_at
@@ -597,14 +695,24 @@ app.post('/api/update-receipt-config', async (req, res) => {
   const { president, secretary1, secretary2, treasurer } = req.body;
 
   try {
-    await pool.query(`
-      UPDATE ReceiptConfig
-      SET president = $1,
-          secretary1 = $2,
-          secretary2 = $3,
-          treasurer = $4
-      WHERE id = 1
-    `, [president, secretary1, secretary2, treasurer]);
+    // Upsert the SAME row every read uses (highest id). This avoids the old
+    // bug where `WHERE id = 1` updated 0 rows when the config row's id wasn't 1.
+    const existing = await pool.query('SELECT id FROM ReceiptConfig ORDER BY id DESC LIMIT 1');
+
+    if (existing.rows.length > 0) {
+      await pool.query(
+        `UPDATE ReceiptConfig
+         SET president = $1, secretary1 = $2, secretary2 = $3, treasurer = $4
+         WHERE id = $5`,
+        [president, secretary1, secretary2, treasurer, existing.rows[0].id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO ReceiptConfig (president, secretary1, secretary2, treasurer)
+         VALUES ($1, $2, $3, $4)`,
+        [president, secretary1, secretary2, treasurer]
+      );
+    }
 
     res.json({ success: true });
 
@@ -720,7 +828,8 @@ app.get('/api/get-financial-year', (req, res) => {
 // Save Transaction for existing user
 // Save Transaction for existing user
 app.post('/api/save-transaction', async (req, res) => {
-  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus } = req.body;
+  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, bhog } = req.body;
+  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? null : parseInt(bhog, 10);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -764,9 +873,9 @@ app.post('/api/save-transaction', async (req, res) => {
     console.log("NEW RECEIPT GENERATED:", receiptNo);
 
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, paymentMode || null, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount]
     );
     // 🔥 ALWAYS SAVE RECEIPT (CRITICAL FIX)
 const receiptPayload = {
@@ -778,14 +887,18 @@ const receiptPayload = {
   amountFigure: amountPaid,
   amountWords: amountPaid,
   paymentMode,
+  bhog: bhogCount,
+  status: receiptStatus || 'due',
   chequeOrDDNo: utrNumber || referenceDetails || ''
 };
-const receiptHtml = buildReceiptHtml(receiptPayload, {}); // config optional
+// Snapshot the current signatory names so this receipt keeps them forever
+const receiptConfig = await getReceiptConfig(client);
+const receiptHtml = buildReceiptHtml(receiptPayload, receiptConfig);
 
 await client.query(
   `INSERT INTO Receipts 
-   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, created_at)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, president, secretary1, secretary2, treasurer, bhog, status, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
   [
     receiptNo,
     houseNo,
@@ -794,7 +907,13 @@ await client.query(
     amountPaid,
     yearOfPayment,
     paymentMode,
-    receiptHtml
+    receiptHtml,
+    receiptConfig.president || null,
+    receiptConfig.secretary1 || null,
+    receiptConfig.secretary2 || null,
+    receiptConfig.treasurer || null,
+    bhogCount,
+    receiptStatus || 'due'
   ]
 );
     await client.query(
@@ -811,7 +930,7 @@ await client.query(
     await client.query('COMMIT');
 
     // Upload receipt image + viewer page to Supabase AFTER commit (does not block DB transaction)
-    const { imageUrl: receiptImageUrl, viewUrl: receiptViewUrl, svg: receiptSvg } = await saveReceiptImage(receiptPayload, {});
+    const { imageUrl: receiptImageUrl, viewUrl: receiptViewUrl, svg: receiptSvg } = await saveReceiptImage(receiptPayload, receiptConfig);
     if (receiptImageUrl) {
       try {
         await pool.query(
@@ -846,7 +965,8 @@ await client.query(
 
 // Create new house + transaction
 app.post('/api/create-new-house', async (req, res) => {
-  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber } = req.body;
+  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber, bhog } = req.body;
+  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? null : parseInt(bhog, 10);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -876,9 +996,9 @@ app.post('/api/create-new-house', async (req, res) => {
     const receiptNo = await generateReceiptNo(client);
 
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, paymentMode, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, paymentMode || null, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount]
     );
 
     // 🔥 ALWAYS SAVE RECEIPT
@@ -891,14 +1011,18 @@ const receiptPayload = {
   amountFigure: amountPaid,
   amountWords: amountPaid,
   paymentMode,
+  bhog: bhogCount,
+  status: receiptStatus || 'due',
   chequeOrDDNo: utrNumber || referenceDetails || ''
 };
-const receiptHtml = buildReceiptHtml(receiptPayload, {});
+// Snapshot the current signatory names so this receipt keeps them forever
+const receiptConfig = await getReceiptConfig(client);
+const receiptHtml = buildReceiptHtml(receiptPayload, receiptConfig);
 
 await client.query(
   `INSERT INTO Receipts 
-   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, created_at)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())`,
+   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, president, secretary1, secretary2, treasurer, bhog, status, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
   [
     receiptNo,
     houseNo,
@@ -907,7 +1031,13 @@ await client.query(
     amountPaid,
     yearOfPayment,
     paymentMode,
-    receiptHtml
+    receiptHtml,
+    receiptConfig.president || null,
+    receiptConfig.secretary1 || null,
+    receiptConfig.secretary2 || null,
+    receiptConfig.treasurer || null,
+    bhogCount,
+    receiptStatus || 'due'
   ]
 );
 
@@ -924,7 +1054,7 @@ await client.query(
     await client.query('COMMIT');
 
     // Upload receipt image + viewer page to Supabase AFTER commit
-    const { imageUrl: receiptImageUrl, viewUrl: receiptViewUrl, svg: receiptSvg } = await saveReceiptImage(receiptPayload, {});
+    const { imageUrl: receiptImageUrl, viewUrl: receiptViewUrl, svg: receiptSvg } = await saveReceiptImage(receiptPayload, receiptConfig);
     if (receiptImageUrl) {
       try {
         await pool.query(
@@ -959,7 +1089,8 @@ await client.query(
 
 // Update customer state
 app.post('/api/update-customer-state', async (req, res) => {
-  const { houseNo, state } = req.body;
+  const { houseNo } = req.body;
+  const state = req.body.state ?? req.body.newState;
   try {
     await pool.query(`UPDATE CollectionDetails SET state = $1 WHERE houseno = $2`, [state, houseNo]);
     res.json({ success: true });
@@ -997,7 +1128,7 @@ app.post('/api/all-data', async (req, res) => {
         s.yearofsubscription,
         s.subscriptiontotalamount,
         t.yearofpayment,
-        t.transaction_timestamp,
+        t.createdat AS transaction_timestamp,
         t.subscriptionamount,
         t.modeofpayment,
         t.utrnumber,
@@ -1014,11 +1145,15 @@ app.post('/api/all-data', async (req, res) => {
       query += ` AND c.block = ANY($${values.length + 1})`;
       values.push(allowedBlocks);
     }
-    if (receiptStatus && receiptStatus.toLowerCase() !== 'all') {
-      query += ` AND (t.receiptstatus = $${values.length + 1})`;
-      values.push(receiptStatus.toLowerCase() === "collected" ? "collected" : "due");
-    } else {
-      query += ` AND (t.receiptstatus = 'collected' OR t.receiptstatus = 'completed')`;
+    // Status filtering:
+    //  - 'collected' → include collected AND completed (completed = collected & finalized)
+    //  - 'due'       → only due
+    //  - 'all'/empty → no status filter (return everything)
+    const rs = (receiptStatus || '').toLowerCase();
+    if (rs === 'collected') {
+      query += ` AND t.receiptstatus IN ('collected', 'completed')`;
+    } else if (rs === 'due') {
+      query += ` AND t.receiptstatus = 'due'`;
     }
     const result = await pool.query(query, values);
     res.json(result.rows);
@@ -1031,34 +1166,11 @@ app.post('/api/all-data', async (req, res) => {
 
 
 
-// Update the state of a CollectionDetails entry (active/inactive)
-app.post('/api/update-customer-state', async (req, res) => {
-  const { houseNo, state } = req.body;
-  try {
-    await pool.query(
-      'UPDATE CollectionDetails SET state = $1 WHERE houseno = $2',
-      [state, houseNo]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Error updating state:', err);
-    res.status(500).json({ success: false, message: 'Failed to update state' });
-  }
+// Returns the current server-boot session id. Used by the client to detect
+// a server restart (id changes) and force a fresh login.
+app.get('/api/auth/session', (req, res) => {
+  res.json({ sessionId: SERVER_SESSION_ID });
 });
-// Get subscribers
-app.get('/api/subscribers', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT subscriber_id, houseno, name FROM CollectionDetails');
-    res.json(result.rows);
-  } catch (err) {
-    console.error('Error fetching subscribers:', err);
-    res.status(500).json({ error: 'Failed to fetch subscribers' });
-  }
-});
-
-// Endpoint to get combined data from CollectionDetails, SubscriptionDetails, TransactionalDetails
-
-// In your server.js
 
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
@@ -1070,7 +1182,7 @@ app.post('/api/login', async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      res.json({ success: true, allowedBlocks: user.allowed_blocks || [] });
+      res.json({ success: true, allowedBlocks: normalizeBlocks(user.allowed_blocks), sessionId: SERVER_SESSION_ID });
     } else {
       res.json({ success: false });
     }
@@ -1104,6 +1216,25 @@ app.post('/api/add-user', async (req, res) => {
   }
 });
 
+
+// Fetch a user's currently-assigned blocks (used to pre-check the Update User form)
+app.get('/api/user-blocks', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+  try {
+    const result = await pool.query(
+      'SELECT allowed_blocks FROM Logincredentials WHERE email = $1',
+      [email]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ found: false, blocks: [] });
+    }
+    res.json({ found: true, blocks: normalizeBlocks(result.rows[0].allowed_blocks) });
+  } catch (err) {
+    console.error('Error fetching user blocks:', err);
+    res.status(500).json({ error: 'Failed to fetch user blocks' });
+  }
+});
 
 // Update user credentials
 app.post('/api/update-user', async (req, res) => {
@@ -1187,7 +1318,6 @@ app.post('/api/dashboard/customer-status', async (req, res) => {
     }
 
     const paidRes = await pool.query(queryPaid, values);
-    console.log(paidRes);
     const pendingRes = await pool.query(queryPending, values);
 
     res.json({
@@ -1350,24 +1480,330 @@ app.post('/api/dashboard/due-housenos', async (req, res) => {
 });
 
 
-// ✅ GET ALL RECEIPTS FOR ADMIN DASHBOARD
+// Combined dashboard summary — returns all four datasets in a single round-trip
+app.post('/api/dashboard/summary', async (req, res) => {
+  const { allowedBlocks } = req.body;
+  const scoped =
+    allowedBlocks && Array.isArray(allowedBlocks) && !allowedBlocks.includes('ALLBLOCKS');
+  const blockValues = scoped ? [allowedBlocks] : [];
+  const blockClause = (alias) => (scoped ? ` AND ${alias}.block = ANY($1)` : '');
+
+  try {
+    const [paidRes, pendingRes, modesRes, receiptRes, dueRes] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(DISTINCT c.subscriber_id) AS paid
+         FROM CollectionDetails c
+         JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+         JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+         WHERE c.state = 'active'${blockClause('c')}`,
+        blockValues
+      ),
+      pool.query(
+        `SELECT COUNT(*) AS pending
+         FROM CollectionDetails c
+         WHERE c.state = 'active'
+           AND NOT EXISTS (
+             SELECT 1 FROM SubscriptionDetails s
+             JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+             WHERE s.subscriberid = c.subscriber_id
+           )${blockClause('c')}`,
+        blockValues
+      ),
+      pool.query(
+        `SELECT t.modeofpayment AS mode, COUNT(*) AS count
+         FROM CollectionDetails c
+         JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+         JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+         WHERE c.state = 'active'${blockClause('c')}
+         GROUP BY t.modeofpayment`,
+        blockValues
+      ),
+      pool.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN receiptstatus = 'collected' THEN 1 ELSE 0 END), 0) AS collected,
+           COALESCE(SUM(CASE WHEN receiptstatus = 'due' THEN 1 ELSE 0 END), 0) AS due,
+           COALESCE(SUM(CASE WHEN receiptstatus = 'pending' OR receiptstatus IS NULL OR receiptstatus = '' THEN 1 ELSE 0 END), 0) AS pending
+         FROM CollectionDetails c
+         WHERE c.state = 'active'${blockClause('c')}`,
+        blockValues
+      ),
+      pool.query(
+        `SELECT
+           t.receipt_no,
+           c.houseno,
+           c.name,
+           c.block,
+           c.contact,
+           c.email,
+           c.amountpaidlastyear,
+           c.previousyearreceiptnumber,
+           t.subscriptionamount AS amount,
+           t.yearofpayment,
+           t.bhog
+         FROM CollectionDetails c
+         JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+         JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+         WHERE c.state = 'active' AND t.receiptstatus = 'due'${blockClause('c')}
+         ORDER BY c.houseno`,
+        blockValues
+      ),
+    ]);
+
+    res.json({
+      customerStatus: {
+        paid: Number(paidRes.rows[0].paid),
+        pending: Number(pendingRes.rows[0].pending),
+      },
+      paymentModes: modesRes.rows,
+      receiptStatus: {
+        collected: parseInt(receiptRes.rows[0].collected, 10),
+        due: parseInt(receiptRes.rows[0].due, 10),
+        pending: parseInt(receiptRes.rows[0].pending, 10),
+      },
+      dueHousenos: dueRes.rows,
+    });
+  } catch (err) {
+    console.error('Dashboard summary failed:', err);
+    res.status(500).json({ error: 'Dashboard summary failed' });
+  }
+});
+
+// Complete a previously-created DUE transaction: attach the payment mode,
+// mark it collected, recompute totals, and regenerate the receipt image.
+// Identified by the receipt_no of the due transaction (unique per transaction).
+app.post('/api/complete-due', async (req, res) => {
+  const { receiptNo, paymentMode, utrNumber, referenceDetails, bhog, contact, email } = req.body;
+  if (!receiptNo) return res.status(400).json({ error: 'receiptNo is required' });
+  if (!paymentMode) return res.status(400).json({ error: 'paymentMode is required to complete a due entry' });
+
+  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? null : parseInt(bhog, 10);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Load the due transaction along with the house + existing receipt snapshot
+    const txRes = await client.query(
+      `SELECT t.subscriptionid, t.subscriptionamount, t.yearofpayment, t.receiptstatus, t.bhog,
+              c.subscriber_id, c.houseno, c.name, c.block
+       FROM TransactionalDetails t
+       JOIN SubscriptionDetails s ON t.subscriptionid = s.subscriptionid
+       JOIN CollectionDetails c ON s.subscriberid = c.subscriber_id
+       WHERE t.receipt_no = $1`,
+      [receiptNo]
+    );
+
+    if (txRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Due transaction not found for that receipt number' });
+    }
+
+    const tx = txRes.rows[0];
+    if (tx.receiptstatus !== 'due') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This transaction is not in a due state.' });
+    }
+
+    // 1) Finalize the transaction
+    await client.query(
+      `UPDATE TransactionalDetails
+       SET modeofpayment = $1, utrnumber = $2, referencenumber = $3,
+           receiptstatus = 'completed', bhog = COALESCE($4, bhog)
+       WHERE receipt_no = $5`,
+      [paymentMode, utrNumber || null, referenceDetails || null, bhogCount, receiptNo]
+    );
+
+    // 2) Mark the house collected (+ optionally refresh contact/email)
+    await client.query(
+      `UPDATE CollectionDetails
+       SET receiptstatus = 'collected',
+           contact = COALESCE($1, contact),
+           email = COALESCE($2, email)
+       WHERE subscriber_id = $3`,
+      [contact || null, email || null, tx.subscriber_id]
+    );
+
+    // 3) Recompute the subscription total from collected/completed rows
+    await client.query(
+      `UPDATE SubscriptionDetails
+       SET subscriptiontotalamount = (
+          SELECT COALESCE(SUM(subscriptionamount),0)
+          FROM TransactionalDetails
+          WHERE subscriptionid = $1 AND (receiptstatus = 'collected' OR receiptstatus = 'completed')
+        )
+       WHERE subscriptionid = $1`,
+      [tx.subscriptionid]
+    );
+
+    // Load the existing receipt row (for its snapshot names + amount)
+    const rcpt = await client.query(
+      `SELECT amount, president, secretary1, secretary2, treasurer FROM Receipts WHERE receipt_no = $1`,
+      [receiptNo]
+    );
+    const existing = rcpt.rows[0] || {};
+
+    await client.query('COMMIT');
+
+    // Rebuild the receipt using the ORIGINAL snapshot names (fallback to current config)
+    const snapshotConfig = {
+      president: existing.president,
+      secretary1: existing.secretary1,
+      secretary2: existing.secretary2,
+      treasurer: existing.treasurer,
+    };
+    const config = (existing.president || existing.treasurer)
+      ? snapshotConfig
+      : await getReceiptConfig();
+
+    const receiptPayload = {
+      receiptNo,
+      date: new Date().toLocaleDateString('en-GB'),
+      name: tx.name,
+      houseNo: tx.houseno,
+      address: `${tx.houseno}${tx.block ? ', Block ' + tx.block : ''}`,
+      amountFigure: existing.amount ?? tx.subscriptionamount,
+      amountWords: existing.amount ?? tx.subscriptionamount,
+      paymentMode,
+      bhog: bhogCount ?? tx.bhog,
+      status: 'collected',
+      chequeOrDDNo: utrNumber || referenceDetails || ''
+    };
+
+    const receiptHtml = buildReceiptHtml(receiptPayload, config);
+    let receiptImageUrl = '';
+    let receiptViewUrl = '';
+    let receiptSvg = '';
+    try {
+      const saved = await saveReceiptImage(receiptPayload, config);
+      receiptImageUrl = saved.imageUrl || '';
+      receiptViewUrl = saved.viewUrl || '';
+      receiptSvg = saved.svg || '';
+    } catch (imgErr) {
+      console.error('Failed to regenerate receipt image on completion:', imgErr.message);
+    }
+
+    // Persist the updated payment mode + regenerated receipt
+    await pool.query(
+      `UPDATE Receipts
+       SET payment_mode = $1, receipt_html = $2,
+           receipt_image_url = COALESCE($3, receipt_image_url),
+           receipt_view_url = COALESCE($4, receipt_view_url),
+           status = 'collected',
+           bhog = COALESCE($5, bhog)
+       WHERE receipt_no = $6`,
+      [paymentMode, receiptHtml, receiptImageUrl || null, receiptViewUrl || null, bhogCount, receiptNo]
+    );
+    if (receiptImageUrl) {
+      await pool.query(
+        `UPDATE TransactionalDetails SET receipt_image_url = $1, receipt_view_url = $2 WHERE receipt_no = $3`,
+        [receiptImageUrl, receiptViewUrl, receiptNo]
+      );
+    }
+
+    res.json({ success: true, receiptNo, receiptImageUrl, receiptViewUrl, receiptSvg });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('Error completing due transaction:', err);
+    res.status(500).json({ error: 'Failed to complete due transaction' });
+  } finally {
+    client.release();
+  }
+});
+
+
+app.get('/api/receipt-svg/:receiptNo', async (req, res) => {
+  const { receiptNo } = req.params;
+  try {
+    const result = await pool.query(
+      `SELECT r.receipt_no, r.houseno, r.name, r.amount, r.payment_mode, r.created_at,
+              r.president, r.secretary1, r.secretary2, r.treasurer,
+              COALESCE(r.bhog, t.bhog, 0) AS bhog,
+              COALESCE(r.status, t.receiptstatus, 'collected') AS status,
+              c.block
+       FROM Receipts r
+       LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no
+       LEFT JOIN CollectionDetails c ON c.houseno = r.houseno
+       WHERE r.receipt_no = $1
+       LIMIT 1`,
+      [receiptNo]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Receipt not found' });
+    }
+    const row = result.rows[0];
+    const config = {
+      president: row.president,
+      secretary1: row.secretary1,
+      secretary2: row.secretary2,
+      treasurer: row.treasurer,
+    };
+    // Fall back to live config if this receipt has no snapshot names
+    const live = (!row.president && !row.treasurer) ? await getReceiptConfig() : config;
+    const receiptData = {
+      receiptNo: row.receipt_no,
+      date: row.created_at ? new Date(row.created_at).toLocaleDateString('en-GB') : '',
+      name: row.name,
+      houseNo: row.houseno,
+      address: `${row.houseno}${row.block ? ', Block ' + row.block : ''}`,
+      amountFigure: row.amount,
+      amountWords: row.amount,
+      paymentMode: row.payment_mode || '',
+      bhog: row.bhog ?? 0,
+      status: row.status || 'collected',
+      chequeOrDDNo: ''
+    };
+    const svg = buildReceiptSvg(receiptData, live);
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(svg);
+  } catch (err) {
+    console.error('Error building receipt SVG:', err);
+    res.status(500).json({ error: 'Failed to build receipt SVG' });
+  }
+});
+
+
+// ✅ GET RECEIPTS — scoped to the caller's allowed blocks so a single-block
+// user only ever sees their own block's receipts.
 app.get('/api/receipts', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT 
-        receipt_no,
-        houseno,
-        name,
-        amount,
-        created_at,
-        receipt_html,
-        receipt_image_url,
-        payment_mode,
-        email
-      FROM Receipts
-      ORDER BY created_at DESC
-    `);
+    // allowedBlocks arrives as a JSON string or comma list in the query.
+    let allowedBlocks = [];
+    if (req.query.allowedBlocks) {
+      try {
+        allowedBlocks = JSON.parse(req.query.allowedBlocks);
+      } catch {
+        allowedBlocks = String(req.query.allowedBlocks).split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+    const scoped =
+      Array.isArray(allowedBlocks) && allowedBlocks.length > 0 && !allowedBlocks.includes('ALLBLOCKS');
 
+    let query = `
+      SELECT 
+        r.receipt_no,
+        r.houseno,
+        r.name,
+        r.amount,
+        r.created_at,
+        r.receipt_html,
+        r.receipt_image_url,
+        r.payment_mode,
+        r.email,
+        r.president,
+        r.secretary1,
+        r.secretary2,
+        r.treasurer,
+        r.bhog,
+        r.status
+      FROM Receipts r`;
+    const values = [];
+    if (scoped) {
+      query += ` JOIN CollectionDetails c ON c.houseno = r.houseno AND c.block = ANY($1)`;
+      values.push(allowedBlocks);
+    }
+    query += ` ORDER BY r.created_at DESC`;
+
+    const result = await pool.query(query, values);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching receipts:', err);
@@ -1391,6 +1827,9 @@ app.post('/api/resend-whatsapp', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to send WhatsApp message' });
   }
 });
+
+
+
 
 
 app.listen(port, () => {

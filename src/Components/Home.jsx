@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend
@@ -94,6 +95,7 @@ function PremiumDonut({ data = [], gradientPrefix }) {
 }
 
 function Home({ allowedBlocks = [] }) {
+  const navigate = useNavigate();
   const [statusData, setStatusData] = useState([]);
   const [modeData, setModeData] = useState([]);
   const [receiptStatusData, setReceiptStatusData] = useState([]);
@@ -102,6 +104,7 @@ function Home({ allowedBlocks = [] }) {
   const [receipts, setReceipts] = useState([]);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [liveReceiptSvgUrl, setLiveReceiptSvgUrl] = useState('');
 
   const [filterHouse, setFilterHouse] = useState("");
   const [filterDate, setFilterDate] = useState("");
@@ -110,63 +113,66 @@ function Home({ allowedBlocks = [] }) {
   const [showDue, setShowDue] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
 
-  const fetchReceipts = async () => {
+  // Open a receipt using a freshly rebuilt SVG from the server (includes
+  // Mahastmi Bhog line + DUE stamp), instead of a possibly stale stored image.
+  const openReceipt = async (receipt) => {
+    setSelectedReceipt(receipt);
+    setLiveReceiptSvgUrl('');
+    setShowReceiptModal(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/receipts`);
+      const url = `${API_BASE_URL}/api/receipt-svg/${encodeURIComponent(receipt.receipt_no)}?t=${Date.now()}`;
+      setLiveReceiptSvgUrl(url);
+    } catch (err) {
+      console.error('Failed to load live receipt SVG', err);
+    }
+  };
+
+  const fetchReceipts = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/receipts`, {
+        params: { allowedBlocks: JSON.stringify(allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']) }
+      });
       setReceipts(res.data || []);
     } catch (err) {
       console.error("Failed to fetch receipts", err);
     }
-  };
+  }, [allowedBlocks]);
 
   const fetchDashboardData = useCallback(() => {
-
-    axios.post(`${API_BASE_URL}/api/dashboard/customer-status`, {
+    axios.post(`${API_BASE_URL}/api/dashboard/summary`, {
       allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
     })
       .then(res => {
-        const data = res.data;
+        const data = res.data || {};
+        const cs = data.customerStatus || {};
         setStatusData([
-          { name: 'Paid', value: data.paid || 0 },
-          { name: 'Pending', value: data.pending || 0 }
+          { name: 'Paid', value: cs.paid || 0 },
+          { name: 'Pending', value: cs.pending || 0 }
         ]);
-      })
-      .catch(err => {
-        setStatusData([]);
-        console.error(err);
-      });
 
-    axios.post(`${API_BASE_URL}/api/dashboard/payment-modes`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
-    })
-      .then(res => {
         setModeData(
-          (res.data || []).map(d => ({
+          (data.paymentModes || []).map(d => ({
             name: d.mode,
             value: Number(d.count)
           }))
         );
-      })
-      .catch(() => setModeData([]));
 
-    axios.post(`${API_BASE_URL}/api/dashboard/receipt-status`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
-    })
-      .then(res => {
+        const rs = data.receiptStatus || {};
         setReceiptStatusData([
-          { name: 'Collected', value: res.data.collected || 0 },
-          { name: 'Due', value: res.data.due || 0 },
-          { name: 'Pending', value: res.data.pending || 0 }
+          { name: 'Collected', value: rs.collected || 0 },
+          { name: 'Due', value: rs.due || 0 },
+          { name: 'Pending', value: rs.pending || 0 }
         ]);
+
+        setDueHouseList(data.dueHousenos || []);
       })
-      .catch(() => setReceiptStatusData([]));
-
-    axios.post(`${API_BASE_URL}/api/dashboard/due-housenos`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
-    })
-      .then(res => setDueHouseList(res.data || []))
-      .catch(() => setDueHouseList([]));
-
+      .catch(err => {
+        console.error(err);
+        setStatusData([]);
+        setModeData([]);
+        setReceiptStatusData([]);
+        setDueHouseList([]);
+      });
   }, [allowedBlocks]);  // ✅ IMPORTANT DEPENDENCY
 
 
@@ -183,15 +189,12 @@ function Home({ allowedBlocks = [] }) {
     fetchDashboardData();
     fetchReceipts();
     fetchConfig();
-  }, [fetchDashboardData, allowedBlocks]);
+  }, [fetchDashboardData, fetchReceipts, allowedBlocks]);
 
-  const handleChangeStatus = async (houseno, name) => {
-    try {
-      await axios.post(`${API_BASE_URL}/api/dashboard/update-receiptstatus`, { houseno, name });
-      fetchDashboardData();
-    } catch {
-      alert('Failed to change status!');
-    }
+  // Send the collector to the Pay Subscription form with this due entry
+  // pre-filled, so they can add the payment mode and finalize it.
+  const handleCompleteDue = (row) => {
+    navigate('/pay', { state: { completeDue: row } });
   };
 
 
@@ -297,8 +300,8 @@ function Home({ allowedBlocks = [] }) {
                       <td colSpan={5} className="text-center p-4 text-slate-500">No due records</td>
                     </tr>
                   ) : (
-                    dueHouseList.map(row => (
-                      <tr key={row.houseno} className="border-b border-slate-100 transition hover:bg-blue-50/60">
+                    dueHouseList.map((row, idx) => (
+                      <tr key={row.receipt_no || `${row.houseno}-${idx}`} className="border-b border-slate-100 transition hover:bg-blue-50/60">
                         <td className="p-3 font-medium text-slate-900">{row.houseno}</td>
                         <td className="p-3">{row.name}</td>
                         <td className="p-3">{row.block}</td>
@@ -306,7 +309,7 @@ function Home({ allowedBlocks = [] }) {
                         <td className="p-3">
                           <button
                             className="btn-neon !px-4 !py-1.5 text-xs"
-                            onClick={() => handleChangeStatus(row.houseno)}
+                            onClick={() => handleCompleteDue(row)}
                           >
                             Complete
                           </button>
@@ -440,10 +443,7 @@ function Home({ allowedBlocks = [] }) {
                         <td className="p-3">
                           <button
                             className="btn-neon !px-4 !py-1.5 text-xs"
-                            onClick={() => {
-                              setSelectedReceipt(r);
-                              setShowReceiptModal(true);
-                            }}
+                            onClick={() => openReceipt(r)}
                           >
                             View
                           </button>
@@ -463,18 +463,19 @@ function Home({ allowedBlocks = [] }) {
 
       {/* MODAL */}
       {showReceiptModal && selectedReceipt && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-2xl p-4 overflow-auto max-h-[90vh]">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 px-2 py-4">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 overflow-y-auto max-h-[90vh] animate-fadeIn">
 
-            <h3 className="text-center font-bold mb-4">Receipt</h3>
-
-            {showReceiptModal && selectedReceipt && (
-              <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 px-2 py-4">
-
-                <div className="bg-white w-full max-w-xl rounded-2xl shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 overflow-hidden animate-fadeIn">
-
-                  {/* Prefer stored Supabase receipt image when available */}
-                  {selectedReceipt.receipt_image_url ? (
+                  {/* Live rebuilt SVG (Mahastmi Bhog + DUE) — falls back to stored image / HTML */}
+                  {liveReceiptSvgUrl ? (
+                    <div className="m-3">
+                      <img
+                        src={liveReceiptSvgUrl}
+                        alt={`Receipt ${selectedReceipt.receipt_no}`}
+                        className="w-full h-auto rounded-lg border border-slate-200 bg-white"
+                      />
+                    </div>
+                  ) : selectedReceipt.receipt_image_url ? (
                     <div className="m-3">
                       <img
                         src={selectedReceipt.receipt_image_url}
@@ -559,22 +560,38 @@ function Home({ allowedBlocks = [] }) {
                       </div>
                     </div>
 
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-blue-800">
+                        Please collect your "Mahastmi Bhog" from pandal Between 1 pm to 3 pm
+                      </p>
+                      <div className="flex h-20 w-20 flex-col items-center justify-center border-2 border-blue-800 text-center">
+                        <span className="text-[9px] font-bold text-blue-800">BHOG PACKETS</span>
+                        <span className="text-2xl font-bold text-gray-800">{selectedReceipt.bhog || 0}</span>
+                      </div>
+                    </div>
+
+                    {(selectedReceipt.status || '').toLowerCase() === 'due' && (
+                      <div className="mt-3 text-center border-2 border-red-600 bg-red-50 py-1 font-bold tracking-[0.3em] text-red-600">
+                        DUE
+                      </div>
+                    )}
+
                     {/* SIGNATURES */}
                     <div className="grid grid-cols-3 text-center mt-6 text-xs gap-2">
 
                       <div>
-                        <p className="font-bold">{config?.president || "Sarbani Basu Roy"}</p>
+                        <p className="font-bold">{selectedReceipt.president || config?.president || "Sarbani Basu Roy"}</p>
                         <p className="italic">President</p>
                       </div>
 
                       <div>
-                        <p className="font-bold">{config?.secretary1}</p>
-                        <p className="font-bold">{config?.secretary2}</p>
+                        <p className="font-bold">{selectedReceipt.secretary1 || config?.secretary1}</p>
+                        <p className="font-bold">{selectedReceipt.secretary2 || config?.secretary2}</p>
                         <p className="italic">Jt. Secretaries</p>
                       </div>
 
                       <div>
-                        <p className="font-bold">{config?.treasurer || "Sayan Mitra"}</p>
+                        <p className="font-bold">{selectedReceipt.treasurer || config?.treasurer}</p>
                         <p className="italic">Treasurer</p>
                       </div>
 
@@ -587,16 +604,14 @@ function Home({ allowedBlocks = [] }) {
                   <div className="p-4 bg-slate-50">
                     <button
                       className="btn-neon w-full"
-                      onClick={() => setShowReceiptModal(false)}
+                      onClick={() => {
+                        setShowReceiptModal(false);
+                        setLiveReceiptSvgUrl('');
+                      }}
                     >
                       Close
                     </button>
                   </div>
-
-                </div>
-
-              </div>
-            )}
 
           </div>
         </div>

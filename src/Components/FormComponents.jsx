@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './FormComponents.css';
 import { API_BASE_URL } from './Constants.jsx';
@@ -41,7 +42,8 @@ function buildReceiptData(formData, receiptNo) {
     drawnOn: '',
     collector: 'Sayan Mitra',
     email: formData.email,
-    receiptStatus: formData.receiptStatus
+    receiptStatus: formData.receiptStatus,
+    bhog: formData.bhog
   };
 }
 
@@ -62,8 +64,15 @@ function FormComponent({ allowedBlocks }) {
     amountPaidThisYear: '',
     receiptsThisYear: '',
     receiptStatus: 'collected',
+    bhog: '',            // optional "Bhog packets" count
     receiptNo: ''        // <-- Add this field!
   });
+
+  // When arriving from the Home "Complete" button, we finalize an existing DUE
+  // entry instead of creating a brand-new transaction.
+  const [completingDue, setCompletingDue] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // ...other hooks...
   const [showDropdown, setShowDropdown] = useState(false);
@@ -81,6 +90,13 @@ function FormComponent({ allowedBlocks }) {
   const [config, setConfig] = useState({});
 
   const dropdownRef = useRef(null);
+
+  // Block options honoring role-based access: all-access users get every block,
+  // restricted users can only ever pick (and therefore create in) their own blocks.
+  const isAllAccess = Array.isArray(allowedBlocks) && allowedBlocks.includes('ALLBLOCKS');
+  const blockOptions = isAllAccess
+    ? ['A', 'B', 'C', 'D']
+    : (Array.isArray(allowedBlocks) ? allowedBlocks.filter(b => b !== 'ALLBLOCKS') : []);
 
   useEffect(() => {
     // eslint-disable-next-line
@@ -142,6 +158,36 @@ function FormComponent({ allowedBlocks }) {
     fetchConfig();
     // eslint-disable-next-line
   }, [allowedBlocks]);
+
+  // Prefill from the Home "Complete" action (finalizing a due entry)
+  useEffect(() => {
+    const due = location.state?.completeDue;
+    if (!due) return;
+
+    setFormData(prev => ({
+      ...prev,
+      houseNo: due.houseno || '',
+      name: due.name || '',
+      contact: due.contact || '',
+      email: due.email || '',
+      block: due.block || '',
+      amountPaidLastYear: due.amountpaidlastyear || '',
+      previousYearReceiptNumber: due.previousyearreceiptnumber || '',
+      amountPaid: due.amount != null ? String(due.amount) : '',
+      bhog: due.bhog != null ? String(due.bhog) : '',
+      paymentMode: '',
+      utrNumber: '',
+      referenceDetails: '',
+      receiptStatus: 'collected',
+      receiptNo: due.receipt_no || ''
+    }));
+    setCompletingDue(true);
+    setShowCreateButton(false);
+
+    // Clear router state so a refresh doesn't re-trigger completion mode
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line
+  }, [location.state]);
 
   useEffect(() => {
     const handleClickOutside = event => {
@@ -304,6 +350,7 @@ function FormComponent({ allowedBlocks }) {
         referenceDetails: '',
         block: '',
         receiptStatus: 'collected',
+        bhog: '',
         receiptNo: ''
       }));
 
@@ -312,6 +359,7 @@ function FormComponent({ allowedBlocks }) {
       // setSubmitEnabled(true);
       setShowCreateButton(false);
       setShowQR(false);
+      setCompletingDue(false);
 
       return;
     }
@@ -366,6 +414,9 @@ function FormComponent({ allowedBlocks }) {
       if (Number(value) >= 0) {
         setFormData(prev => ({ ...prev, [field]: value }));
       }
+    } else if (field === 'bhog') {
+      const digitsOnly = value.replace(/\D/g, '');
+      setFormData(prev => ({ ...prev, bhog: digitsOnly }));
     } else if (field === 'email') {
       setFormData(prev => ({ ...prev, email: value }));
     } else if (field === 'receiptStatus') {
@@ -429,6 +480,7 @@ function FormComponent({ allowedBlocks }) {
       paymentMode: '',
       utrNumber: '',
       referenceDetails: '',
+      bhog: '',
       receiptStatus:
         suggestion.receiptstatus
           ? suggestion.receiptstatus.toLowerCase() === 'due' ? 'due' : 'collected'
@@ -447,7 +499,7 @@ function FormComponent({ allowedBlocks }) {
     try {
       await axios.post(`${API_BASE_URL}/api/update-customer-state`, {
         houseNo: formData.houseNo,
-        newState: 'inactive'
+        state: 'inactive'
       });
       alert(`Customer with house no ${formData.houseNo} has been set to inactive.`);
 
@@ -462,12 +514,94 @@ function FormComponent({ allowedBlocks }) {
     }
   };
 
+  // Shared post-save receipt delivery: show + auto-download, and only open
+  // WhatsApp when a contact number is present.
+  const deliverReceipt = ({ receiptNo, receiptImageUrl, receiptViewUrl, receiptSvg }) => {
+    const receiptToShow = buildReceiptData(formData, receiptNo);
+
+    // Prefer the freshly generated SVG so the Mahastmi Bhog line / DUE stamp
+    // always appear immediately — even if a cached Supabase image is stale.
+    let displayUrl = receiptImageUrl || '';
+    if (receiptSvg) {
+      displayUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(receiptSvg)}`;
+    }
+
+    setReceiptData({
+      ...receiptToShow,
+      receiptImageUrl: displayUrl,
+      receiptViewUrl: receiptViewUrl || receiptImageUrl || '',
+      receiptSvg: receiptSvg || '',
+    });
+    setShowReceiptModal(true);
+
+    // 📲 WhatsApp ONLY if a contact number was provided
+    if (String(formData.contact || '').replace(/\D/g, '')) {
+      openWhatsApp({
+        contact: formData.contact,
+        name: formData.name,
+        receiptNo,
+        houseNo: formData.houseNo,
+        amountPaid: formData.amountPaid,
+        yearOfPayment: formData.yearOfPayment,
+        paymentMode: formData.paymentMode,
+        // Share the public Supabase link (not the data: URL)
+        receiptLink: receiptImageUrl || receiptViewUrl,
+      });
+    }
+
+    // ⬇️ ALWAYS auto-download the receipt to this device
+    autoDownloadReceipt({
+      svgText: receiptSvg,
+      imageUrl: receiptImageUrl,
+      filenameBase: `Receipt-${formData.name}-${formData.houseNo}-${receiptNo}${(formData.receiptStatus || '').toLowerCase() === 'due' ? '-DUE' : ''}`,
+    });
+  };
+
   const handleSubmitTransaction = async event => {
     event.preventDefault();
+
+    // Payment mode is required unless the entry is being saved as "due"
+    if (formData.receiptStatus !== 'due' && !formData.paymentMode) {
+      alert('Please select a payment mode.');
+      return;
+    }
 
     setLoading(true);
 
     try {
+      // ── COMPLETING A DUE ENTRY ─────────────────────────────────────────────
+      if (completingDue) {
+        const resp = await axios.post(`${API_BASE_URL}/api/complete-due`, {
+          receiptNo: formData.receiptNo,
+          paymentMode: formData.paymentMode,
+          utrNumber: formData.utrNumber,
+          referenceDetails: formData.referenceDetails,
+          bhog: formData.bhog,
+          contact: formData.contact,
+          email: formData.email,
+        });
+
+        const receiptNo = resp.data.receiptNo || formData.receiptNo;
+        deliverReceipt({
+          receiptNo,
+          receiptImageUrl: resp.data.receiptImageUrl || '',
+          receiptViewUrl: resp.data.receiptViewUrl || '',
+          receiptSvg: resp.data.receiptSvg || '',
+        });
+
+        if (formData.email) {
+          await sendReceiptToBackend(buildReceiptData(formData, receiptNo));
+        }
+
+        setCompletingDue(false);
+        setTimeout(() => {
+          resetForm();
+          navigate('/home');
+        }, 1500);
+        return;
+      }
+
+      // ── NORMAL NEW TRANSACTION ─────────────────────────────────────────────
       const payload = { ...formData, amountPaid: parseFloat(formData.amountPaid) };
 
       const response = await axios.post(`${API_BASE_URL}/api/save-transaction`, payload);
@@ -496,31 +630,13 @@ function FormComponent({ allowedBlocks }) {
         return row;
       }));
 
-      // ✅ FETCH RECEIPT FROM BACKEND
-      const receiptToShow = buildReceiptData(formData, receiptNo);
-
-      // Store image + viewer URLs from Supabase (returned by backend after upload)
-      const receiptImageUrl = response.data.receiptImageUrl || "";
-      const receiptViewUrl = response.data.receiptViewUrl || "";
-      const receiptSvg = response.data.receiptSvg || "";
-      setReceiptData({ ...receiptToShow, receiptImageUrl, receiptViewUrl });
-      setShowReceiptModal(true);
-
-      // 📲 REDIRECT TO WHATSAPP with the SVG receipt link (fires right after save)
-      openWhatsApp({
-        contact: formData.contact,
-        name: formData.name,
+      // ✅ SHOW + DOWNLOAD receipt; WhatsApp only if a contact number exists
+      deliverReceipt({
         receiptNo,
-        houseNo: formData.houseNo,
-        amountPaid: formData.amountPaid,
-        yearOfPayment: formData.yearOfPayment,
-        paymentMode: formData.paymentMode,
-        // Send the SVG image link (openable/downloadable on any device)
-        receiptLink: receiptImageUrl || receiptViewUrl,
+        receiptImageUrl: response.data.receiptImageUrl || "",
+        receiptViewUrl: response.data.receiptViewUrl || "",
+        receiptSvg: response.data.receiptSvg || "",
       });
-
-      // ⬇️ AUTO-DOWNLOAD the receipt to this device
-      autoDownloadReceipt({ svgText: receiptSvg, imageUrl: receiptImageUrl, filenameBase: `Receipt-${formData.name}-${formData.houseNo}-${receiptNo}` });
 
       // ✅ SEND EMAIL ONLY IF EXISTS
       if (formData.email) {
@@ -571,30 +687,13 @@ function FormComponent({ allowedBlocks }) {
         },
       ]);
 
-      // ✅ FETCH FROM BACKEND
-      const receiptToShow = buildReceiptData(formData, receiptNo);
-
-      const receiptImageUrl = response.data.receiptImageUrl || "";
-      const receiptViewUrl = response.data.receiptViewUrl || "";
-      const receiptSvg = response.data.receiptSvg || "";
-      setReceiptData({ ...receiptToShow, receiptImageUrl, receiptViewUrl });
-      setShowReceiptModal(true);
-
-      // 📲 REDIRECT TO WHATSAPP with the SVG receipt link (fires right after save)
-      openWhatsApp({
-        contact: formData.contact,
-        name: formData.name,
+      // ✅ SHOW + DOWNLOAD receipt; WhatsApp only if a contact number exists
+      deliverReceipt({
         receiptNo,
-        houseNo: formData.houseNo,
-        amountPaid: formData.amountPaid,
-        yearOfPayment: formData.yearOfPayment,
-        paymentMode: formData.paymentMode,
-        // Send the SVG image link (openable/downloadable on any device)
-        receiptLink: receiptImageUrl || receiptViewUrl,
+        receiptImageUrl: response.data.receiptImageUrl || "",
+        receiptViewUrl: response.data.receiptViewUrl || "",
+        receiptSvg: response.data.receiptSvg || "",
       });
-
-      // ⬇️ AUTO-DOWNLOAD the receipt to this device
-      autoDownloadReceipt({ svgText: receiptSvg, imageUrl: receiptImageUrl, filenameBase: `Receipt-${formData.name}-${formData.houseNo}-${receiptNo}` });
 
       // ✅ EMAIL OPTIONAL
       if (formData.email) {
@@ -625,6 +724,7 @@ function FormComponent({ allowedBlocks }) {
       referenceDetails: '',
       block: '',
       receiptStatus: 'collected',
+      bhog: '',
       receiptNo: '',
       amountPaidThisYear: '',
       receiptsThisYear: '',  // Reset receiptNo
@@ -748,7 +848,7 @@ function FormComponent({ allowedBlocks }) {
           {/* Contact */}
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Contact
+              Contact <span className="text-slate-400 font-normal">(optional)</span>
             </label>
             <input
               type="text"
@@ -756,7 +856,7 @@ function FormComponent({ allowedBlocks }) {
               onChange={(e) =>
                 handleInputChange("contact", e.target.value)
               }
-              required
+              placeholder="Leave blank to skip WhatsApp"
               className="input-neon"
             />
           </div>
@@ -792,10 +892,9 @@ function FormComponent({ allowedBlocks }) {
               className="input-neon"
             >
               <option value="">Select Block</option>
-              <option value="A">A</option>
-              <option value="B">B</option>
-              <option value="C">C</option>
-              <option value="D">D</option>
+              {blockOptions.map(b => (
+                <option key={b} value={b}>{b}</option>
+              ))}
             </select>
           </div>
 
@@ -875,7 +974,9 @@ function FormComponent({ allowedBlocks }) {
           {/* Payment Mode */}
           <div>
             <label className="block text-slate-700 font-semibold mb-2">
-              Payment Mode
+              Payment Mode {formData.receiptStatus === 'due' && (
+                <span className="text-slate-400 font-normal">(optional for due)</span>
+              )}
             </label>
 
             <select
@@ -884,7 +985,7 @@ function FormComponent({ allowedBlocks }) {
                 handleInputChange("paymentMode", e.target.value);
                 setShowQR(false);
               }}
-              required
+              required={formData.receiptStatus !== 'due'}
               className="input-neon"
             >
               <option value="">Select Payment Mode</option>
@@ -894,6 +995,21 @@ function FormComponent({ allowedBlocks }) {
               <option value="DD">DD</option>
               <option value="NEFT">NEFT</option>
             </select>
+          </div>
+
+          {/* Bhog Packets (optional) */}
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">
+              Bhog Packets <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={formData.bhog}
+              onChange={(e) => handleInputChange("bhog", e.target.value)}
+              placeholder="Count of bhog"
+              className="input-neon"
+            />
           </div>
 
           {/* Receipt Status */}
@@ -908,14 +1024,22 @@ function FormComponent({ allowedBlocks }) {
                 handleInputChange("receiptStatus", e.target.value)
               }
               required
-              className="input-neon"
+              disabled={completingDue}
+              className="input-neon disabled:opacity-70 disabled:cursor-not-allowed"
             >
               <option value="collected">Collected</option>
-              <option value="due">Due</option>
+              {/* No "Due" option while completing an existing due entry */}
+              {!completingDue && <option value="due">Due</option>}
             </select>
           </div>
 
         </div>
+
+        {completingDue && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-700">
+            Completing due entry for <b>{formData.houseNo}</b> — select a payment mode and save to finalize. Receipt No: <b>{formData.receiptNo}</b>
+          </div>
+        )}
 
         {/* Action Buttons */}
 
@@ -926,7 +1050,7 @@ function FormComponent({ allowedBlocks }) {
             disabled={loading}
             className="btn-neon min-w-[180px]"
           >
-            {loading ? "Processing..." : "Save Transaction"}
+            {loading ? "Processing..." : completingDue ? "Complete Transaction" : "Save Transaction"}
           </button>
 
           <button
@@ -1108,6 +1232,15 @@ function FormComponent({ allowedBlocks }) {
                   <b>Date:</b> <span style={{ fontWeight: 700, color: '#222' }}>{receiptData.date}</span>
                 </div>
               </div>
+              {(receiptData.receiptStatus || '').toLowerCase() === 'due' && (
+                <div style={{
+                  margin: '8px auto 0', width: 140, textAlign: 'center',
+                  border: '2.5px solid #ff0000', color: '#ff0000', fontWeight: 700,
+                  letterSpacing: 4, padding: '4px 0', background: '#ffecec', borderRadius: 6
+                }}>
+                  DUE
+                </div>
+              )}
               <div style={{ fontSize: '1.5em', fontWeight: 700, textAlign: 'center', margin: '8px 0 5px 0', letterSpacing: 1 }}>
                 Sarbojanin Durgotsab, 2026
               </div>
@@ -1144,6 +1277,18 @@ function FormComponent({ allowedBlocks }) {
               }}>
                 ₹ {receiptData.amountFigure}
               </div>
+
+              {/* Bhog packets note + count — always shown */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginTop: 10 }}>
+                <div style={{ fontWeight: 700, color: '#0033cc' }}>
+                  Please collect your "Mahastmi Bhog" from pandal Between 1 pm to 3 pm
+                </div>
+                <div style={{ border: '2px solid #0033cc', width: 92, height: 92, textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <div style={{ fontSize: '0.7em', fontWeight: 700, color: '#0033cc' }}>BHOG PACKETS</div>
+                  <div style={{ fontSize: '1.7em', fontWeight: 700, color: '#222' }}>{receiptData.bhog || 0}</div>
+                </div>
+              </div>
+
               {/* Signatures */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'end', fontSize: '0.98em', marginTop: 32 }}>
 
