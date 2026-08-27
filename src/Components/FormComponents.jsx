@@ -51,6 +51,20 @@ function buildReceiptData(formData, receiptNo) {
   };
 }
 
+function todayISODate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function showsBankTxnFields(mode) {
+  const m = String(mode || '').toUpperCase();
+  return ['QR', 'CHEQUE', 'DD', 'NEFT', 'UTR'].includes(m);
+}
+
+function RequiredStar() {
+  return <span className="text-rose-500 ml-0.5" aria-hidden="true">*</span>;
+}
+
 function FormComponent({ allowedBlocks }) {
   const [formData, setFormData] = useState({
     houseNo: '',
@@ -68,7 +82,11 @@ function FormComponent({ allowedBlocks }) {
     amountPaidThisYear: '',
     receiptsThisYear: '',
     receiptStatus: 'collected',
-    bhog: '',            // optional "Bhog packets" count
+    bhog: '1',
+    referenceReceiptNumber: '',
+    transactionReference: '',
+    transactionDated: todayISODate(),
+    bankName: '',
     receiptNo: ''        // <-- Add this field!
   });
 
@@ -76,6 +94,7 @@ function FormComponent({ allowedBlocks }) {
   // entry instead of creating a brand-new transaction.
   const [completingDue, setCompletingDue] = useState(false);
   const completingDueRef = useRef(false);
+  const [showDueConfirm, setShowDueConfirm] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -195,15 +214,22 @@ function FormComponent({ allowedBlocks }) {
       amountPaidLastYear: due.amountpaidlastyear || '',
       previousYearReceiptNumber: due.previousyearreceiptnumber || '',
       amountPaid: due.amount != null ? String(due.amount) : '',
-      bhog: due.bhog != null ? String(due.bhog) : '',
+      bhog: due.bhog != null && due.bhog !== '' ? String(due.bhog) : '1',
       paymentMode: '',
       utrNumber: '',
       referenceDetails: '',
+      referenceReceiptNumber: due.reference_receipt_no || '',
+      transactionReference: due.transaction_reference || '',
+      transactionDated: due.transaction_dated
+        ? String(due.transaction_dated).slice(0, 10)
+        : todayISODate(),
+      bankName: due.bank_name || '',
       receiptStatus: 'collected',
       receiptNo: due.receipt_no || ''
     }));
     setCompletingDue(true);
     completingDueRef.current = true;
+    setShowDueConfirm(true);
     setShowCreateButton(false);
 
     // Clear router state so a refresh doesn't re-trigger completion mode
@@ -372,7 +398,11 @@ function FormComponent({ allowedBlocks }) {
         referenceDetails: '',
         block: '',
         receiptStatus: 'collected',
-        bhog: '',
+        bhog: '1',
+        referenceReceiptNumber: '',
+        transactionReference: '',
+        transactionDated: todayISODate(),
+        bankName: '',
         receiptNo: prev.receiptNo || '', // keep next-receipt preview
         amountPaidThisYear: '',
         receiptsThisYear: '',
@@ -507,7 +537,11 @@ function FormComponent({ allowedBlocks }) {
       paymentMode: '',
       utrNumber: '',
       referenceDetails: '',
-      bhog: '',
+      bhog: '1',
+      referenceReceiptNumber: '',
+      transactionReference: '',
+      transactionDated: todayISODate(),
+      bankName: '',
       receiptStatus:
         suggestion.receiptstatus
           ? suggestion.receiptstatus.toLowerCase() === 'due' ? 'due' : 'collected'
@@ -587,6 +621,10 @@ function FormComponent({ allowedBlocks }) {
   const handleSubmitTransaction = async event => {
     event.preventDefault();
 
+    if (completingDue && showDueConfirm) {
+      return;
+    }
+
     // Payment mode is required unless the entry is being saved as "due"
     if (formData.receiptStatus !== 'due' && !formData.paymentMode) {
       alert('Please select a payment mode.');
@@ -606,6 +644,10 @@ function FormComponent({ allowedBlocks }) {
           bhog: formData.bhog,
           contact: formData.contact,
           email: formData.email,
+          referenceReceiptNumber: formData.referenceReceiptNumber,
+          transactionReference: formData.transactionReference,
+          transactionDated: formData.transactionDated,
+          bankName: formData.bankName,
         });
 
         const receiptNo = resp.data.receiptNo || formData.receiptNo;
@@ -685,7 +727,7 @@ function FormComponent({ allowedBlocks }) {
       }, 1500);
 
     } catch (error) {
-      alert('Failed to save transaction. Please try again.');
+      alert(error.response?.data?.error || error.response?.data?.message || 'Failed to save transaction. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -693,6 +735,10 @@ function FormComponent({ allowedBlocks }) {
 
 
   const handleCreateNewRecord = async () => {
+    if (formData.receiptStatus !== 'due' && !formData.paymentMode) {
+      alert('Please select a payment mode.');
+      return;
+    }
     try {
       const payload = {
         ...formData,
@@ -745,7 +791,7 @@ function FormComponent({ allowedBlocks }) {
       // ❌ REMOVED: await fetchData() and await fetchFinancialYear() — done locally above
 
     } catch (err) {
-      alert('Failed to create new entry.');
+      alert(err.response?.data?.error || err.response?.data?.message || 'Failed to create new entry.');
     }
   };
 
@@ -765,7 +811,11 @@ function FormComponent({ allowedBlocks }) {
       referenceDetails: '',
       block: '',
       receiptStatus: 'collected',
-      bhog: '',
+      bhog: '1',
+      referenceReceiptNumber: '',
+      transactionReference: '',
+      transactionDated: todayISODate(),
+      bankName: '',
       receiptNo: '',
       amountPaidThisYear: '',
       receiptsThisYear: '',
@@ -788,6 +838,9 @@ function FormComponent({ allowedBlocks }) {
       <div className="relative mb-8 text-center">
         <p className="text-xs uppercase tracking-[0.4em] text-blue-500/80">Subscription</p>
         <h1 className="mt-2 text-3xl md:text-4xl font-bold tracking-tight neon-text">Form Submission</h1>
+        <p className="mt-2 text-xs text-slate-500">
+          Fields marked <span className="text-rose-500 font-semibold">*</span> are required
+        </p>
         <div className="mx-auto mt-4 h-[2px] w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
       </div>
 
@@ -795,13 +848,10 @@ function FormComponent({ allowedBlocks }) {
         onSubmit={handleSubmitTransaction}
         className="relative glass-card p-5 md:p-8"
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 items-start">
 
-          {/* House No */}
-          <div className="relative">
-            <label className="block text-slate-700 font-semibold mb-2">
-              House No
-            </label>
+          <div className="field">
+            <label className="field-label">House No<RequiredStar /></label>
             <input
               type="text"
               value={formData.houseNo}
@@ -811,27 +861,24 @@ function FormComponent({ allowedBlocks }) {
             />
           </div>
 
-          {/* Name */}
-          <div className="relative">
-            <label className="block text-slate-700 font-semibold mb-2">
-              Name
-            </label>
-
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => handleInputChange("name", e.target.value)}
-              required
-              className="input-neon"
-            />
-
-            <button
-              type="button"
-              onClick={() => handleButtonClick("name")}
-              className="btn-neon mt-3 !px-4 !py-2 text-sm"
-            >
-              Show Options
-            </button>
+          <div className="field">
+            <label className="field-label">Name<RequiredStar /></label>
+            <div className="flex gap-2 items-stretch">
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleInputChange("name", e.target.value)}
+                required
+                className="input-neon flex-1 min-w-0"
+              />
+              <button
+                type="button"
+                onClick={() => handleButtonClick("name")}
+                className="btn-ghost h-12 shrink-0 px-4 text-sm"
+              >
+                Options
+              </button>
+            </div>
           </div>
 
           {showDropdown && filteredSuggestions.length > 0 && (
@@ -845,93 +892,68 @@ function FormComponent({ allowedBlocks }) {
                   onClick={() => handleSelectSuggestion(suggestion)}
                   className="px-4 py-3 cursor-pointer transition hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
                 >
-                  <div className="font-semibold text-slate-900">
-                    {suggestion.houseno}
-                  </div>
-
-                  <div className="text-slate-700">
-                    {suggestion.name}
-                  </div>
-
-                  <div className="text-sm text-slate-500">
-                    {suggestion.contact}
-                  </div>
+                  <div className="font-semibold text-slate-900">{suggestion.houseno}</div>
+                  <div className="text-slate-700">{suggestion.name}</div>
+                  <div className="text-sm text-slate-500">{suggestion.contact}</div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Receipt No */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Receipt No {completingDue ? '' : <span className="text-slate-400 font-normal text-xs">(next)</span>}
+          <div className="field">
+            <label className="field-label">
+              Receipt No
+              {completingDue ? null : <span className="text-slate-400 font-normal text-xs">(next)</span>}
             </label>
             <input
               type="text"
               value={formData.receiptNo || ""}
               readOnly
               placeholder="Assigned on save"
-              className="w-full rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 font-semibold text-blue-700"
+              className="w-full h-12 rounded-xl bg-blue-50 border border-blue-200 px-4 font-semibold text-blue-700"
             />
           </div>
 
-          {/* Receipts This Year */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Receipts Made This Financial Year
-            </label>
+          <div className="field">
+            <label className="field-label">Receipts This Financial Year</label>
             <input
               type="text"
               value={formData.receiptsThisYear || ""}
               readOnly
               placeholder="None yet"
-              className="w-full rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-blue-700"
+              className="w-full h-12 rounded-xl bg-blue-50 border border-blue-200 px-4 text-blue-700"
             />
           </div>
 
-          {/* Contact */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Contact <span className="text-slate-400 font-normal">(optional)</span>
+          <div className="field">
+            <label className="field-label">
+              Contact <span className="text-slate-400 font-normal text-xs">(optional)</span>
             </label>
             <input
               type="text"
               value={formData.contact}
-              onChange={(e) =>
-                handleInputChange("contact", e.target.value)
-              }
+              onChange={(e) => handleInputChange("contact", e.target.value)}
               placeholder="Leave blank to skip WhatsApp"
               className="input-neon"
             />
           </div>
 
-          {/* Email */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Email
-            </label>
+          <div className="field">
+            <label className="field-label">Email</label>
             <input
               type="email"
               value={formData.email}
-              onChange={(e) =>
-                handleInputChange("email", e.target.value)
-              }
+              onChange={(e) => handleInputChange("email", e.target.value)}
               placeholder="Enter email if you want a copy"
               className="input-neon"
             />
           </div>
 
-          {/* Block */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Block
-            </label>
-
+          <div className="field">
+            <label className="field-label">Block<RequiredStar /></label>
             <select
               value={formData.block}
-              onChange={(e) =>
-                handleInputChange("block", e.target.value)
-              }
+              onChange={(e) => handleInputChange("block", e.target.value)}
               required
               className="input-neon"
             >
@@ -942,94 +964,71 @@ function FormComponent({ allowedBlocks }) {
             </select>
           </div>
 
-          {/* Previous Receipt */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Previous Year Receipt Number
-            </label>
-
+          <div className="field">
+            <label className="field-label">Previous Year Receipt Number</label>
             <input
               type="text"
               value={formData.previousYearReceiptNumber}
               readOnly
-              className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-slate-600"
+              className="w-full h-12 rounded-xl bg-slate-100 border border-slate-200 px-4 text-slate-600"
             />
           </div>
 
-          {/* Amount Last Year */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Amount Paid Last Year
-            </label>
-
+          <div className="field">
+            <label className="field-label">Amount Paid Last Year</label>
             <input
               type="text"
               value={formData.amountPaidLastYear}
               readOnly
-              className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-slate-600"
+              className="w-full h-12 rounded-xl bg-slate-100 border border-slate-200 px-4 text-slate-600"
             />
           </div>
 
-          {/* Amount This Year */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Amount Paid This Financial Year
-            </label>
-
+          <div className="field">
+            <label className="field-label">Amount Paid This Financial Year</label>
             <input
               type="text"
               value={formData.amountPaidThisYear}
               readOnly
-              className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-slate-600"
+              className="w-full h-12 rounded-xl bg-slate-100 border border-slate-200 px-4 text-slate-600"
             />
           </div>
 
-          {/* Amount Paid */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Amount Paid
-            </label>
-
+          <div className="field">
+            <label className="field-label">Amount Paid<RequiredStar /></label>
             <input
               type="number"
               value={formData.amountPaid}
-              onChange={(e) =>
-                handleInputChange("amountPaid", e.target.value)
-              }
+              onChange={(e) => handleInputChange("amountPaid", e.target.value)}
               required
               className="input-neon"
             />
           </div>
 
-          {/* Year */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Year Of Payment
-            </label>
-
+          <div className="field">
+            <label className="field-label">Year Of Payment<RequiredStar /></label>
             <input
               type="text"
               value={formData.yearOfPayment}
               readOnly
-              className="w-full rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-slate-600"
+              className="w-full h-12 rounded-xl bg-slate-100 border border-slate-200 px-4 text-slate-600"
             />
           </div>
 
-          {/* Payment Mode */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Payment Mode {formData.receiptStatus === 'due' && (
-                <span className="text-slate-400 font-normal">(optional for due)</span>
+          <div className="field">
+            <label className="field-label">
+              Payment Mode
+              {formData.receiptStatus !== 'due' ? <RequiredStar /> : (
+                <span className="text-slate-400 font-normal text-xs">(optional for due)</span>
               )}
             </label>
-
             <select
               value={formData.paymentMode}
               onChange={(e) => {
                 handleInputChange("paymentMode", e.target.value);
                 setShowQR(false);
               }}
-              required={formData.receiptStatus !== 'due'}
+              {...(formData.receiptStatus !== 'due' ? { required: true } : {})}
               className="input-neon"
             >
               <option value="">Select Payment Mode</option>
@@ -1038,43 +1037,85 @@ function FormComponent({ allowedBlocks }) {
               <option value="Cheque">Cheque</option>
               <option value="DD">DD</option>
               <option value="NEFT">NEFT</option>
+              <option value="UTR">UTR</option>
             </select>
           </div>
 
-          {/* Bhog Packets (optional) */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Bhog Packets <span className="text-slate-400 font-normal">(optional)</span>
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={formData.bhog}
-              onChange={(e) => handleInputChange("bhog", e.target.value)}
-              placeholder="Count of bhog"
-              className="input-neon"
-            />
-          </div>
-
-          {/* Receipt Status */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-2">
-              Receipt Status
-            </label>
-
+          <div className="field">
+            <label className="field-label">Receipt Status<RequiredStar /></label>
             <select
               value={formData.receiptStatus}
-              onChange={(e) =>
-                handleInputChange("receiptStatus", e.target.value)
-              }
+              onChange={(e) => handleInputChange("receiptStatus", e.target.value)}
               required
               disabled={completingDue}
               className="input-neon disabled:opacity-70 disabled:cursor-not-allowed"
             >
               <option value="collected">Collected</option>
-              {/* No "Due" option while completing an existing due entry */}
               {!completingDue && <option value="due">Due</option>}
             </select>
+          </div>
+
+          {showsBankTxnFields(formData.paymentMode) && (
+            <div className="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50/50 p-4 md:p-5">
+              <p className="text-xs uppercase tracking-widest text-blue-500 font-semibold mb-4">
+                Bank / instrument details
+                <span className="ml-2 normal-case tracking-normal font-normal text-slate-400">(optional)</span>
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-5 gap-y-4 items-start">
+                <div className="field">
+                  <label className="field-label">Transaction Reference#</label>
+                  <input
+                    type="text"
+                    value={formData.transactionReference}
+                    onChange={(e) => handleInputChange('transactionReference', e.target.value)}
+                    placeholder="UTR# / NEFT# / Cheque#"
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Dated</label>
+                  <input
+                    type="date"
+                    value={formData.transactionDated || todayISODate()}
+                    onChange={(e) => handleInputChange('transactionDated', e.target.value)}
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Bank Name</label>
+                  <input
+                    type="text"
+                    value={formData.bankName}
+                    onChange={(e) => handleInputChange('bankName', e.target.value)}
+                    placeholder="Bank name"
+                    className="input-neon"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="field">
+            <label className="field-label">Bhog Packets</label>
+            <input
+              type="number"
+              min="0"
+              value={formData.bhog}
+              onChange={(e) => handleInputChange("bhog", e.target.value)}
+              placeholder="1"
+              className="input-neon"
+            />
+          </div>
+
+          <div className="field">
+            <label className="field-label">Reference Receipt No</label>
+            <input
+              type="text"
+              value={formData.referenceReceiptNumber}
+              onChange={(e) => handleInputChange("referenceReceiptNumber", e.target.value)}
+              placeholder="Physical receipt number"
+              className="input-neon"
+            />
           </div>
 
         </div>
@@ -1091,7 +1132,7 @@ function FormComponent({ allowedBlocks }) {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (completingDue && showDueConfirm)}
             className="btn-neon min-w-[180px]"
           >
             {loading ? "Processing..." : completingDue ? "Complete Transaction" : "Save Transaction"}
@@ -1211,6 +1252,41 @@ function FormComponent({ allowedBlocks }) {
           "
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDueConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md glass-card p-6 md:p-8 text-center animate-fadeIn">
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Complete due transaction?</h3>
+            <p className="text-slate-600 mb-6 leading-relaxed">
+              Once you complete this due transaction you will not be able to change it.
+              House <b className="text-blue-600">{formData.houseNo}</b>
+              {formData.receiptNo ? <> · Receipt <b>{formData.receiptNo}</b></> : null}.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                type="button"
+                className="btn-neon"
+                onClick={() => setShowDueConfirm(false)}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  setShowDueConfirm(false);
+                  setCompletingDue(false);
+                  completingDueRef.current = false;
+                  resetForm();
+                  navigate('/home');
+                }}
+              >
+                No
               </button>
             </div>
           </div>

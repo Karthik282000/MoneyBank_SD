@@ -10,6 +10,27 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 dotenv.config();
 
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Put your Durga Devi image at ./assets/durga-bg.png (or .jpg) relative to server.js
+const DURGA_BG_PATH = path.join(__dirname, 'assets', 'DurgaMAAIMAGE.jpg');
+
+let DURGA_BG_DATA_URI = '';
+try {
+  const imgBuffer = fs.readFileSync(DURGA_BG_PATH);
+  const ext = path.extname(DURGA_BG_PATH).slice(1).toLowerCase(); // 'png' or 'jpg'
+  const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+  DURGA_BG_DATA_URI = `data:${mime};base64,${imgBuffer.toString('base64')}`;
+  console.log('✅ Durga background image loaded for receipts');
+} catch (err) {
+  console.warn('⚠️ Durga background image not found — receipts will render without it:', err.message);
+}
+
 const { Pool } = pkg;
 const app = express();
 const port = process.env.PORT || 5000;
@@ -34,6 +55,8 @@ const pool = new Pool({
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const RECEIPTS_BUCKET = process.env.SUPABASE_RECEIPTS_BUCKET || 'receipts';
+
+
 
 async function ensureReceiptImageColumn() {
   try {
@@ -65,6 +88,39 @@ async function ensureReceiptImageColumn() {
     // Mirror bhog + status onto the Receipts row so the receipts list/preview can render them
     await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS bhog INTEGER`);
     await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS status TEXT`);
+    await pool.query(`ALTER TABLE Receipts ADD COLUMN IF NOT EXISTS reference_receipt_no TEXT`);
+    await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS reference_receipt_no TEXT`);
+    await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS transaction_reference TEXT`);
+    await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS transaction_dated DATE`);
+    await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS bank_name TEXT`);
+    // Due entries may be saved without a payment mode
+    try {
+      await pool.query(`ALTER TABLE TransactionalDetails ALTER COLUMN modeofpayment DROP NOT NULL`);
+    } catch (e) { /* already nullable */ }
+    try {
+      await pool.query(`ALTER TABLE Receipts ALTER COLUMN payment_mode DROP NOT NULL`);
+    } catch (e) { /* already nullable */ }
+    // One-time copy from older tables if they still have a reference number
+    try {
+      await pool.query(`
+        UPDATE Receipts r
+        SET reference_receipt_no = src.reference_receipt_no
+        FROM ReceiptMapping src
+        WHERE r.receipt_no = src.receipt_no
+          AND NULLIF(TRIM(r.reference_receipt_no), '') IS NULL
+          AND NULLIF(TRIM(src.reference_receipt_no), '') IS NOT NULL
+      `);
+    } catch (e) { /* ReceiptMapping may not exist */ }
+    try {
+      await pool.query(`
+        UPDATE TransactionalDetails t
+        SET reference_receipt_no = r.reference_receipt_no
+        FROM Receipts r
+        WHERE t.receipt_no = r.receipt_no
+          AND NULLIF(TRIM(t.reference_receipt_no), '') IS NULL
+          AND NULLIF(TRIM(r.reference_receipt_no), '') IS NOT NULL
+      `);
+    } catch (e) { /* optional backfill */ }
   } catch (err) {
     console.error('Could not ensure receipt_image_url column:', err.message);
   }
@@ -134,6 +190,7 @@ async function ensureIndexes() {
     `CREATE INDEX IF NOT EXISTS idx_subscription_subscriberid ON SubscriptionDetails (subscriberid)`,
     `CREATE INDEX IF NOT EXISTS idx_transaction_subscriptionid ON TransactionalDetails (subscriptionid)`,
     `CREATE INDEX IF NOT EXISTS idx_transaction_receiptstatus ON TransactionalDetails (receiptstatus)`,
+    `CREATE INDEX IF NOT EXISTS idx_transaction_reference_receipt_no ON TransactionalDetails (reference_receipt_no)`,
   ];
   for (const sql of statements) {
     try {
@@ -143,10 +200,6 @@ async function ensureIndexes() {
     }
   }
 }
-
-ensureReceiptImageColumn();
-ensureReceiptsBucket();
-ensureIndexes();
 
 
 // const pool = new Pool({
@@ -233,6 +286,11 @@ async function generateReceiptNo(client) {
   }
 
   return `E-${nextNum.toString().padStart(6, '0')}`;
+}
+
+function paymentModeForDb(paymentMode) {
+  const raw = paymentMode == null ? '' : String(paymentMode).trim();
+  return raw;
 }
 
 // Peek the next receipt number WITHOUT consuming the sequence (for form preview).
@@ -357,7 +415,7 @@ function buildReceiptHtml(receiptData = {}, config = {}) {
       of <span class="receipt-value">${receiptData.address || ""}</span>
     </div>
     <div class="receipt-label">
-      The sum of Rupees <span class="receipt-value">${resolveAmountWords(receiptData)} only</span>
+      The sum of Rupees <span class="receipt-value">${receiptData.amountWords || ""} only</span>
     </div>
     <div class="receipt-label">
       by <span class="receipt-value">${receiptData.paymentMode || ""}</span>
@@ -510,10 +568,19 @@ function buildReceiptSvg(receiptData = {}, config = {}) {
   <text x="${width / 2}" y="95" font-size="22" fill="#ff0000" font-weight="bold" text-anchor="middle" letter-spacing="4">DUE</text>
   ` : '';
 
+      const bgImageSection = DURGA_BG_DATA_URI ? `
+  <clipPath id="cardClip">
+    <rect x="16" y="16" width="${width - 32}" height="${height - 32}" rx="8"/>
+  </clipPath>
+  <image href="${DURGA_BG_DATA_URI}" x="16" y="16" width="${width - 32}" height="${height - 32}"
+         opacity="0.10" preserveAspectRatio="xMidYMid slice" clip-path="url(#cardClip)"/>
+  ` : '';
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Georgia, 'Times New Roman', serif">
   <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="16" y="16" width="${width - 32}" height="${height - 32}" fill="#ffffff" stroke="${blue}" stroke-width="2" stroke-dasharray="8 6" rx="8"/>
+${bgImageSection}
 ${dueSection}
   <text x="40" y="60" font-size="18" fill="${blue}" font-weight="bold">No. <tspan fill="${dark}">${escapeXml(receiptData.receiptNo)}</tspan></text>
   <text x="${width - 40}" y="60" font-size="18" fill="${blue}" font-weight="bold" text-anchor="end">Date: <tspan fill="${dark}">${escapeXml(receiptData.date)}</tspan></text>
@@ -528,7 +595,7 @@ ${dueSection}
 
   <text x="40" y="250" font-size="17" fill="${blue}" font-style="italic">Received with thanks from <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.name)}</tspan></text>
   <text x="40" y="282" font-size="17" fill="${blue}" font-style="italic">of <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.address)}</tspan></text>
-  <text x="40" y="314" font-size="17" fill="${blue}" font-style="italic">The sum of Rupees <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(resolveAmountWords(receiptData))} only</tspan></text>
+  <text x="40" y="314" font-size="17" fill="${blue}" font-style="italic">The sum of Rupees <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.amountWords)} only</tspan></text>
   <text x="40" y="346" font-size="17" fill="${blue}">${escapeXml(refLine)}</text>
   <text x="40" y="378" font-size="15" fill="${blue}" font-style="italic">as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.</text>
 
@@ -871,8 +938,12 @@ app.get('/api/get-financial-year', (req, res) => {
 // Save Transaction for existing user
 // Save Transaction for existing user
 app.post('/api/save-transaction', async (req, res) => {
-  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, bhog } = req.body;
-  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? null : parseInt(bhog, 10);
+  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, bhog, referenceReceiptNumber, transactionReference, transactionDated, bankName } = req.body;
+  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? 1 : parseInt(bhog, 10);
+  const mode = paymentModeForDb(paymentMode);
+  const txnRef = (transactionReference || utrNumber || '').trim() || null;
+  const txnDated = transactionDated || null;
+  const bank = (bankName || '').trim() || null;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -916,9 +987,9 @@ app.post('/api/save-transaction', async (req, res) => {
     console.log("NEW RECEIPT GENERATED:", receiptNo);
 
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, paymentMode || null, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, reference_receipt_no, transaction_reference, transaction_dated, bank_name, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, mode, txnRef || utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount, referenceReceiptNumber || null, txnRef, txnDated, bank]
     );
     // 🔥 ALWAYS SAVE RECEIPT (CRITICAL FIX)
 const receiptPayload = {
@@ -929,7 +1000,7 @@ const receiptPayload = {
   address: `${houseNo}${block ? ', Block ' + block : ''}`,
   amountFigure: amountPaid,
   amountWords: amountToWords(amountPaid),
-  paymentMode,
+  paymentMode: mode,
   bhog: bhogCount,
   status: receiptStatus || 'due',
   chequeOrDDNo: utrNumber || referenceDetails || ''
@@ -940,8 +1011,8 @@ const receiptHtml = buildReceiptHtml(receiptPayload, receiptConfig);
 
 await client.query(
   `INSERT INTO Receipts 
-   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, president, secretary1, secretary2, treasurer, bhog, status, created_at)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
+   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, president, secretary1, secretary2, treasurer, bhog, status, reference_receipt_no, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())`,
   [
     receiptNo,
     houseNo,
@@ -949,14 +1020,15 @@ await client.query(
     email || null,
     amountPaid,
     yearOfPayment,
-    paymentMode,
+    mode,
     receiptHtml,
     receiptConfig.president || null,
     receiptConfig.secretary1 || null,
     receiptConfig.secretary2 || null,
     receiptConfig.treasurer || null,
     bhogCount,
-    receiptStatus || 'due'
+    receiptStatus || 'due',
+    referenceReceiptNumber || null
   ]
 );
     await client.query(
@@ -997,7 +1069,7 @@ await client.query(
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error saving transaction:', err);
-    res.status(500).json({ error: 'Transaction failed' });
+    res.status(500).json({ error: err.message || 'Transaction failed' });
   } finally {
     client.release();
   }
@@ -1008,8 +1080,12 @@ await client.query(
 
 // Create new house + transaction
 app.post('/api/create-new-house', async (req, res) => {
-  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber, bhog } = req.body;
-  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? null : parseInt(bhog, 10);
+  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber, bhog, referenceReceiptNumber, transactionReference, transactionDated, bankName } = req.body;
+  const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? 1 : parseInt(bhog, 10);
+  const mode = paymentModeForDb(paymentMode);
+  const txnRef = (transactionReference || utrNumber || '').trim() || null;
+  const txnDated = transactionDated || null;
+  const bank = (bankName || '').trim() || null;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1039,9 +1115,9 @@ app.post('/api/create-new-house', async (req, res) => {
     const receiptNo = await generateReceiptNo(client);
 
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, paymentMode || null, utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, reference_receipt_no, transaction_reference, transaction_dated, bank_name, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, mode, txnRef || utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount, referenceReceiptNumber || null, txnRef, txnDated, bank]
     );
 
     // 🔥 ALWAYS SAVE RECEIPT
@@ -1053,7 +1129,7 @@ const receiptPayload = {
   address: `${houseNo}${block ? ', Block ' + block : ''}`,
   amountFigure: amountPaid,
   amountWords: amountToWords(amountPaid),
-  paymentMode,
+  paymentMode: mode,
   bhog: bhogCount,
   status: receiptStatus || 'due',
   chequeOrDDNo: utrNumber || referenceDetails || ''
@@ -1064,8 +1140,8 @@ const receiptHtml = buildReceiptHtml(receiptPayload, receiptConfig);
 
 await client.query(
   `INSERT INTO Receipts 
-   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, president, secretary1, secretary2, treasurer, bhog, status, created_at)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())`,
+   (receipt_no, houseno, name, email, amount, year_of_payment, payment_mode, receipt_html, president, secretary1, secretary2, treasurer, bhog, status, reference_receipt_no, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())`,
   [
     receiptNo,
     houseNo,
@@ -1073,14 +1149,15 @@ await client.query(
     email || null,
     amountPaid,
     yearOfPayment,
-    paymentMode,
+    mode,
     receiptHtml,
     receiptConfig.president || null,
     receiptConfig.secretary1 || null,
     receiptConfig.secretary2 || null,
     receiptConfig.treasurer || null,
     bhogCount,
-    receiptStatus || 'due'
+    receiptStatus || 'due',
+    referenceReceiptNumber || null
   ]
 );
 
@@ -1121,7 +1198,7 @@ await client.query(
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Error creating new house:', err);
-    res.status(500).json({ error: 'Operation failed' });
+    res.status(500).json({ error: err.message || 'Operation failed' });
   } finally {
     client.release();
   }
@@ -1177,7 +1254,8 @@ app.post('/api/all-data', async (req, res) => {
         t.utrnumber,
         t.referencenumber,
         t.receiptstatus,
-        t.receipt_no    -- <-- ADD THIS FIELD
+        t.receipt_no,
+        t.reference_receipt_no
       FROM CollectionDetails c
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
@@ -1203,6 +1281,105 @@ app.post('/api/all-data', async (req, res) => {
   } catch (err) {
     console.error('Error fetching combined data:', err);
     res.status(500).json({ error: 'Failed to fetch data' });
+  }
+});
+
+// House-level search: includes houses WITH and WITHOUT transactions.
+// Same house + same name:
+//   - collected/completed receipts → one row with the cumulative collected amount
+//   - due receipts → a separate row whose amount is ONLY the due receipt(s)
+// Different names at the same house stay as separate rows.
+app.post('/api/search-houses', async (req, res) => {
+  const { allowedBlocks } = req.body;
+  const blocks = normalizeBlocks(allowedBlocks);
+  const values = [];
+  let blockSql = '';
+  if (blocks.length > 0 && !blocks.includes('ALLBLOCKS')) {
+    blockSql = ` AND c.block = ANY($1)`;
+    values.push(blocks);
+  }
+  try {
+    const query = `
+      SELECT
+        c.houseno,
+        c.name,
+        c.contact,
+        c.email,
+        c.block,
+        c.amountpaidlastyear,
+        c.receiptstatus AS collection_receiptstatus,
+        FALSE AS has_transaction,
+        0::numeric AS total_amount,
+        NULL AS yearofpayment,
+        NULL AS yearofsubscription,
+        NULL::text AS receiptstatus,
+        NULL::text AS reference_receipt_no
+      FROM CollectionDetails c
+      WHERE c.state = 'active'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM SubscriptionDetails s
+          JOIN TransactionalDetails t ON t.subscriptionid = s.subscriptionid
+          WHERE s.subscriberid = c.subscriber_id
+        )
+        ${blockSql}
+
+      UNION ALL
+
+      SELECT
+        c.houseno,
+        c.name,
+        c.contact,
+        c.email,
+        c.block,
+        c.amountpaidlastyear,
+        c.receiptstatus AS collection_receiptstatus,
+        TRUE AS has_transaction,
+        COALESCE(SUM(t.subscriptionamount), 0) AS total_amount,
+        MAX(t.yearofpayment) AS yearofpayment,
+        MAX(s.yearofsubscription) AS yearofsubscription,
+        'collected' AS receiptstatus,
+        STRING_AGG(DISTINCT NULLIF(TRIM(t.reference_receipt_no), ''), ', ') AS reference_receipt_no
+      FROM CollectionDetails c
+      JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+      JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+      WHERE c.state = 'active'
+        AND LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')
+        ${blockSql}
+      GROUP BY
+        c.houseno, c.name, c.contact, c.email, c.block,
+        c.amountpaidlastyear, c.receiptstatus
+
+      UNION ALL
+
+      SELECT
+        c.houseno,
+        c.name,
+        c.contact,
+        c.email,
+        c.block,
+        c.amountpaidlastyear,
+        c.receiptstatus AS collection_receiptstatus,
+        TRUE AS has_transaction,
+        t.subscriptionamount AS total_amount,
+        t.yearofpayment,
+        s.yearofsubscription,
+        t.receiptstatus,
+        t.reference_receipt_no
+      FROM CollectionDetails c
+      JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+      JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+      WHERE c.state = 'active'
+        AND LOWER(COALESCE(t.receiptstatus, '')) = 'due'
+        ${blockSql}
+
+      ORDER BY block, houseno, name, receiptstatus
+    `;
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching search houses:', err);
+    res.status(500).json({ error: 'Failed to fetch search data' });
   }
 });
 
@@ -1383,6 +1560,7 @@ app.post('/api/dashboard/payment-modes', async (req, res) => {
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
       WHERE c.state = 'active'
+        AND t.modeofpayment IS NOT NULL AND TRIM(t.modeofpayment) <> ''
     `;
     let values = [];
 
@@ -1557,7 +1735,8 @@ app.post('/api/dashboard/summary', async (req, res) => {
          FROM CollectionDetails c
          JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
          JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
-         WHERE c.state = 'active'${blockClause('c')}
+         WHERE c.state = 'active'
+           AND t.modeofpayment IS NOT NULL AND TRIM(t.modeofpayment) <> ''${blockClause('c')}
          GROUP BY t.modeofpayment`,
         blockValues
       ),
@@ -1582,7 +1761,8 @@ app.post('/api/dashboard/summary', async (req, res) => {
            c.previousyearreceiptnumber,
            t.subscriptionamount AS amount,
            t.yearofpayment,
-           t.bhog
+           t.bhog,
+           t.reference_receipt_no
          FROM CollectionDetails c
          JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
          JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
@@ -1615,9 +1795,9 @@ app.post('/api/dashboard/summary', async (req, res) => {
 // mark it collected, recompute totals, and regenerate the receipt image.
 // Identified by the receipt_no of the due transaction (unique per transaction).
 app.post('/api/complete-due', async (req, res) => {
-  const { receiptNo, paymentMode, utrNumber, referenceDetails, bhog, contact, email } = req.body;
+  const { receiptNo, paymentMode, utrNumber, referenceDetails, bhog, contact, email, referenceReceiptNumber, transactionReference, transactionDated, bankName } = req.body;
   if (!receiptNo) return res.status(400).json({ error: 'receiptNo is required' });
-  if (!paymentMode) return res.status(400).json({ error: 'paymentMode is required to complete a due entry' });
+  if (!paymentModeForDb(paymentMode)) return res.status(400).json({ error: 'paymentMode is required to complete a due entry' });
 
   const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? null : parseInt(bhog, 10);
   const client = await pool.connect();
@@ -1650,9 +1830,23 @@ app.post('/api/complete-due', async (req, res) => {
     await client.query(
       `UPDATE TransactionalDetails
        SET modeofpayment = $1, utrnumber = $2, referencenumber = $3,
-           receiptstatus = 'completed', bhog = COALESCE($4, bhog)
-       WHERE receipt_no = $5`,
-      [paymentMode, utrNumber || null, referenceDetails || null, bhogCount, receiptNo]
+           receiptstatus = 'completed', bhog = COALESCE($4, bhog),
+           reference_receipt_no = COALESCE($5, reference_receipt_no),
+           transaction_reference = COALESCE($6, transaction_reference),
+           transaction_dated = COALESCE($7, transaction_dated),
+           bank_name = COALESCE($8, bank_name)
+       WHERE receipt_no = $9`,
+      [
+        paymentMode,
+        (transactionReference || utrNumber || null),
+        referenceDetails || null,
+        bhogCount,
+        referenceReceiptNumber || null,
+        (transactionReference || utrNumber || '').trim() || null,
+        transactionDated || null,
+        (bankName || '').trim() || null,
+        receiptNo
+      ]
     );
 
     // 2) Mark the house collected (+ optionally refresh contact/email)
@@ -1731,9 +1925,10 @@ app.post('/api/complete-due', async (req, res) => {
            receipt_image_url = COALESCE($3, receipt_image_url),
            receipt_view_url = COALESCE($4, receipt_view_url),
            status = 'collected',
-           bhog = COALESCE($5, bhog)
-       WHERE receipt_no = $6`,
-      [paymentMode, receiptHtml, receiptImageUrl || null, receiptViewUrl || null, bhogCount, receiptNo]
+           bhog = COALESCE($5, bhog),
+           reference_receipt_no = COALESCE($6, reference_receipt_no)
+       WHERE receipt_no = $7`,
+      [paymentMode, receiptHtml, receiptImageUrl || null, receiptViewUrl || null, bhogCount, referenceReceiptNumber || null, receiptNo]
     );
     if (receiptImageUrl) {
       await pool.query(
@@ -1746,7 +1941,7 @@ app.post('/api/complete-due', async (req, res) => {
   } catch (err) {
     try { await client.query('ROLLBACK'); } catch {}
     console.error('Error completing due transaction:', err);
-    res.status(500).json({ error: 'Failed to complete due transaction' });
+    res.status(500).json({ error: err.message || 'Failed to complete due transaction' });
   } finally {
     client.release();
   }
@@ -1761,6 +1956,7 @@ app.get('/api/receipt-svg/:receiptNo', async (req, res) => {
               r.president, r.secretary1, r.secretary2, r.treasurer,
               COALESCE(r.bhog, t.bhog, 0) AS bhog,
               COALESCE(r.status, t.receiptstatus, 'collected') AS status,
+              COALESCE(NULLIF(TRIM(t.reference_receipt_no), ''), r.reference_receipt_no) AS reference_receipt_no,
               c.block
        FROM Receipts r
        LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no
@@ -1837,8 +2033,10 @@ app.get('/api/receipts', async (req, res) => {
         r.secretary2,
         r.treasurer,
         r.bhog,
-        r.status
-      FROM Receipts r`;
+        r.status,
+        COALESCE(NULLIF(TRIM(t.reference_receipt_no), ''), r.reference_receipt_no) AS reference_receipt_no
+      FROM Receipts r
+      LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no`;
     const values = [];
     if (scoped) {
       query += ` JOIN CollectionDetails c ON c.houseno = r.houseno AND c.block = ANY($1)`;
@@ -1875,6 +2073,14 @@ app.post('/api/resend-whatsapp', async (req, res) => {
 
 
 
-app.listen(port, () => {
-  console.log(`🚀 Server running at http://localhost:${port}`);
+(async () => {
+  await ensureReceiptImageColumn();
+  await ensureReceiptsBucket();
+  await ensureIndexes();
+  app.listen(port, () => {
+    console.log(`🚀 Server running at http://localhost:${port}`);
+  });
+})().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });

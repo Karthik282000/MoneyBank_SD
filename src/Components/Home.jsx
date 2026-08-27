@@ -6,7 +6,6 @@ import {
 } from 'recharts';
 import './Home.css';
 import { API_BASE_URL } from './Constants.jsx';
-import { FiCalendar } from "react-icons/fi";
 
 function amountToWords(num) {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
@@ -121,6 +120,12 @@ function Home({ allowedBlocks = [] }) {
 
   const [filterHouse, setFilterHouse] = useState("");
   const [filterDate, setFilterDate] = useState("");
+  const [filterName, setFilterName] = useState("");
+  const [filterRefReceipt, setFilterRefReceipt] = useState("");
+  const [dueFilterHouse, setDueFilterHouse] = useState("");
+  const [dueFilterName, setDueFilterName] = useState("");
+  const [dueFilterBlock, setDueFilterBlock] = useState("");
+  const [dueFilterRef, setDueFilterRef] = useState("");
   const [config, setConfig] = useState({});
 
   const [showDue, setShowDue] = useState(false);
@@ -214,19 +219,39 @@ function Home({ allowedBlocks = [] }) {
 
   const filteredReceipts = receipts.filter((r) => {
     const house = (r.houseno || "").toLowerCase();
-    const filterH = filterHouse.toLowerCase();
+    const name = (r.name || "").toLowerCase();
+    const refNo = (r.reference_receipt_no || "").toLowerCase();
+    const sysNo = (r.receipt_no || "").toLowerCase();
 
-    // ✅ HOUSE FILTER
-    const matchHouse = filterH ? house.includes(filterH) : true;
+    const matchHouse = filterHouse ? house.includes(filterHouse.toLowerCase()) : true;
+    const matchName = filterName ? name.includes(filterName.toLowerCase()) : true;
+    const matchRef = filterRefReceipt
+      ? refNo.includes(filterRefReceipt.toLowerCase()) || sysNo.includes(filterRefReceipt.toLowerCase())
+      : true;
 
-    // ✅ DATE FILTER (FIXED)
     const receiptDate = r.created_at
-      ? new Date(r.created_at).toLocaleDateString("en-CA") // YYYY-MM-DD format
+      ? new Date(r.created_at).toLocaleDateString("en-CA")
       : "";
-
     const matchDate = filterDate ? receiptDate === filterDate : true;
 
-    return matchHouse && matchDate;
+    return matchHouse && matchName && matchRef && matchDate;
+  });
+
+  const filteredDueList = dueHouseList.filter((row) => {
+    const house = (row.houseno || "").toLowerCase();
+    const name = (row.name || "").toLowerCase();
+    const block = (row.block || "").toLowerCase();
+    const refNo = (row.reference_receipt_no || "").toLowerCase();
+    const sysNo = (row.receipt_no || "").toLowerCase();
+
+    const matchHouse = dueFilterHouse ? house.includes(dueFilterHouse.toLowerCase()) : true;
+    const matchName = dueFilterName ? name.includes(dueFilterName.toLowerCase()) : true;
+    const matchBlock = dueFilterBlock ? block.includes(dueFilterBlock.toLowerCase()) : true;
+    const matchRef = dueFilterRef
+      ? refNo.includes(dueFilterRef.toLowerCase()) || sysNo.includes(dueFilterRef.toLowerCase())
+      : true;
+
+    return matchHouse && matchName && matchBlock && matchRef;
   });
 
   return (
@@ -292,7 +317,70 @@ function Home({ allowedBlocks = [] }) {
 
         {/* CONTENT */}
         {showDue && (
-          <div className="p-5 pt-0 animate-fadeIn">
+          <div className="p-5 pt-0 animate-fadeIn space-y-4">
+
+            <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-4 md:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-rose-500 font-semibold">Query due receipts</p>
+                <span className="text-xs font-medium text-slate-500">
+                  {filteredDueList.length} of {dueHouseList.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-4 items-end">
+                <div className="field">
+                  <label className="field-label">House no</label>
+                  <input
+                    type="text"
+                    value={dueFilterHouse}
+                    onChange={(e) => setDueFilterHouse(e.target.value)}
+                    placeholder="e.g. A1B1"
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Name</label>
+                  <input
+                    type="text"
+                    value={dueFilterName}
+                    onChange={(e) => setDueFilterName(e.target.value)}
+                    placeholder="Subscriber name"
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Block</label>
+                  <input
+                    type="text"
+                    value={dueFilterBlock}
+                    onChange={(e) => setDueFilterBlock(e.target.value)}
+                    placeholder="A / B / C"
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Ref. receipt</label>
+                  <input
+                    type="text"
+                    value={dueFilterRef}
+                    onChange={(e) => setDueFilterRef(e.target.value)}
+                    placeholder="Physical or system no"
+                    className="input-neon"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDueFilterHouse('');
+                    setDueFilterName('');
+                    setDueFilterBlock('');
+                    setDueFilterRef('');
+                  }}
+                  className="btn-ghost h-12 w-full"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm text-left">
@@ -302,22 +390,24 @@ function Home({ allowedBlocks = [] }) {
                     <th className="p-3">House</th>
                     <th className="p-3">Name</th>
                     <th className="p-3">Block</th>
+                    <th className="p-3">Ref. Receipt</th>
                     <th className="p-3">Amount</th>
                     <th className="p-3">Action</th>
                   </tr>
                 </thead>
 
                 <tbody className="text-slate-700">
-                  {dueHouseList.length === 0 ? (
+                  {filteredDueList.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="text-center p-4 text-slate-500">No due records</td>
+                      <td colSpan={6} className="text-center p-4 text-slate-500">No due records</td>
                     </tr>
                   ) : (
-                    dueHouseList.map((row, idx) => (
+                    filteredDueList.map((row, idx) => (
                       <tr key={row.receipt_no || `${row.houseno}-${idx}`} className="border-b border-slate-100 transition hover:bg-blue-50/60">
                         <td className="p-3 font-medium text-slate-900">{row.houseno}</td>
                         <td className="p-3">{row.name}</td>
                         <td className="p-3">{row.block}</td>
+                        <td className="p-3 text-slate-600">{row.reference_receipt_no || '—'}</td>
                         <td className="p-3 text-blue-600 font-semibold">₹ {row.amount}</td>
                         <td className="p-3">
                           <button
@@ -340,71 +430,7 @@ function Home({ allowedBlocks = [] }) {
 
       </div>
 
-      {/* FILTERS */}
-      {/* ================= PREMIUM FILTER ================= */}
-      <div className="mt-6 glass-card p-5">
-
-        <div className="flex flex-col md:flex-row gap-4 items-center">
-
-          {/* HOUSE FILTER */}
-          <div className="w-full md:w-1/3 relative">
-            <input
-              type="text"
-              placeholder="🔍 Search by House No"
-              value={filterHouse}
-              onChange={(e) => setFilterHouse(e.target.value)}
-              className="input-neon"
-            />
-          </div>
-
-          {/* DATE FILTER */}
-          <div className="w-full md:w-1/3 relative">
-
-  {/* DATE INPUT */}
-  <input
-    type="date"
-    value={filterDate}
-    onChange={(e) => setFilterDate(e.target.value)}
-    className="input-neon pr-10 cursor-pointer"
-  />
-
-  {/* CUSTOM ICON */}
-  <FiCalendar
-    className="absolute right-3 top-1/2 -translate-y-1/2 
-               text-blue-500 text-lg pointer-events-none"
-  />
-
-</div>
-
-          {/* RESET BUTTON */}
-          <div className="w-full md:w-auto flex gap-2">
-
-            <button
-              onClick={() => {
-                setFilterHouse("");
-                setFilterDate("");
-              }}
-              className="btn-ghost w-full md:w-auto"
-            >
-              Reset
-            </button>
-
-          </div>
-
-        </div>
-
-        {/* RESULT COUNT */}
-        <div className="mt-4 text-sm text-slate-500">
-          Showing <b className="text-blue-600">{filteredReceipts.length}</b> result(s)
-        </div>
-
-      </div>
-
-      {/* RECEIPTS */}
-      {/* ================= RECEIPTS (COLLAPSIBLE) ================= */}
       <div className="mt-6 glass-card overflow-hidden">
-
-        {/* HEADER */}
         <div
           className="flex justify-between items-center p-5 cursor-pointer transition hover:bg-blue-50/70"
           onClick={() => setShowReceipts(!showReceipts)}
@@ -418,9 +444,69 @@ function Home({ allowedBlocks = [] }) {
           </span>
         </div>
 
-        {/* CONTENT */}
         {showReceipts && (
-          <div className="p-5 pt-0 animate-fadeIn">
+          <div className="px-5 pb-5 space-y-4 animate-fadeIn">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-blue-500 font-semibold">Filter receipts</p>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                  {filteredReceipts.length} match{filteredReceipts.length === 1 ? '' : 'es'}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-4 items-end">
+                <div className="field">
+                  <label className="field-label">House no</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. A1B1"
+                    value={filterHouse}
+                    onChange={(e) => setFilterHouse(e.target.value)}
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Name</label>
+                  <input
+                    type="text"
+                    placeholder="Subscriber name"
+                    value={filterName}
+                    onChange={(e) => setFilterName(e.target.value)}
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Reference receipt</label>
+                  <input
+                    type="text"
+                    placeholder="Physical or system no"
+                    value={filterRefReceipt}
+                    onChange={(e) => setFilterRefReceipt(e.target.value)}
+                    className="input-neon"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Date</label>
+                  <input
+                    type="date"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="input-neon"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterHouse("");
+                    setFilterName("");
+                    setFilterDate("");
+                    setFilterRefReceipt("");
+                  }}
+                  className="btn-ghost h-12 w-full"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
 
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm">
@@ -428,6 +514,7 @@ function Home({ allowedBlocks = [] }) {
                 <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white uppercase text-xs tracking-wider text-left">
                   <tr>
                     <th className="p-3">Receipt</th>
+                    <th className="p-3">Ref. Receipt</th>
                     <th className="p-3">House</th>
                     <th className="p-3">Name</th>
                     <th className="p-3">Amount</th>
@@ -439,7 +526,7 @@ function Home({ allowedBlocks = [] }) {
                 <tbody className="text-slate-700">
                   {filteredReceipts.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center p-4 text-slate-500">
+                      <td colSpan={7} className="text-center p-4 text-slate-500">
                         No receipts found
                       </td>
                     </tr>
@@ -447,6 +534,7 @@ function Home({ allowedBlocks = [] }) {
                     filteredReceipts.map((r, index) => (
                       <tr key={index} className="border-b border-slate-100 transition hover:bg-blue-50/60">
                         <td className="p-3 font-medium text-slate-900">{r.receipt_no}</td>
+                        <td className="p-3 text-slate-600">{r.reference_receipt_no || '—'}</td>
                         <td className="p-3">{r.houseno}</td>
                         <td className="p-3">{r.name}</td>
                         <td className="p-3 text-blue-600 font-semibold">₹ {r.amount}</td>
@@ -468,10 +556,8 @@ function Home({ allowedBlocks = [] }) {
 
               </table>
             </div>
-
           </div>
         )}
-
       </div>
 
       {/* MODAL */}
@@ -507,6 +593,11 @@ function Home({ allowedBlocks = [] }) {
                         Date: {new Date(selectedReceipt.created_at).toLocaleDateString()}
                       </span>
                     </div>
+                    {selectedReceipt.reference_receipt_no ? (
+                      <div className="text-xs text-gray-700 mt-1">
+                        Ref. Receipt No: <span className="font-semibold">{selectedReceipt.reference_receipt_no}</span>
+                      </div>
+                    ) : null}
 
                     {/* TITLE */}
                     <h2 className="text-center text-lg font-bold mt-2">
