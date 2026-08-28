@@ -185,6 +185,25 @@ const BLOCK_STATS = [
   },
 ];
 
+function MemberStatusFlags({ member }) {
+  const collected = !!member.has_completed;
+  const due = !!member.has_due;
+  const noTxn = !collected && !due && !member.has_transaction;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {collected && (
+        <span className="rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-semibold">Collected</span>
+      )}
+      {due && (
+        <span className="rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[11px] font-semibold">Due</span>
+      )}
+      {noTxn && (
+        <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[11px] font-semibold">No txn</span>
+      )}
+    </div>
+  );
+}
+
 function Home({ allowedBlocks = [] }) {
   const navigate = useNavigate();
   const [statusData, setStatusData] = useState([]);
@@ -954,16 +973,8 @@ function Home({ allowedBlocks = [] }) {
                             <p className="break-all">{m.contact || 'No contact'}</p>
                             <p className="break-all">{m.email || 'No email'}</p>
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-1">
-                            {m.has_completed && (
-                              <span className="rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-semibold">Collected</span>
-                            )}
-                            {m.has_due && (
-                              <span className="rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[11px] font-semibold">Due</span>
-                            )}
-                            {!m.has_transaction && (
-                              <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[11px] font-semibold">No txn</span>
-                            )}
+                          <div className="mt-3">
+                            <MemberStatusFlags member={m} />
                           </div>
                         </div>
                       );
@@ -997,17 +1008,7 @@ function Home({ allowedBlocks = [] }) {
                                 ).toFixed(2)}`}
                           </td>
                           <td className="px-5 py-3">
-                            <div className="flex flex-wrap gap-1">
-                              {m.has_completed && (
-                                <span className="rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-semibold">Collected</span>
-                              )}
-                              {m.has_due && (
-                                <span className="rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[11px] font-semibold">Due</span>
-                              )}
-                              {!m.has_transaction && (
-                                <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[11px] font-semibold">No txn</span>
-                              )}
-                            </div>
+                            <MemberStatusFlags member={m} />
                           </td>
                         </tr>
                       ))}

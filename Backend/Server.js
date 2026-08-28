@@ -1716,6 +1716,9 @@ function buildBlockOverview(rows, allowedBlocks) {
     const block = String(row.block || '').trim();
     if (!isRealBlock(block)) continue;
     if (!grouped[block]) grouped[block] = [];
+    const hasCompleted = truthyFlag(row.has_completed);
+    const hasDue = truthyFlag(row.has_due);
+    const hasTransaction = truthyFlag(row.has_transaction) || hasCompleted || hasDue;
     grouped[block].push({
       houseno: row.houseno,
       name: row.name,
@@ -1724,9 +1727,9 @@ function buildBlockOverview(rows, allowedBlocks) {
       block,
       collected_amount: Number(row.collected_amount || 0),
       due_amount: Number(row.due_amount || 0),
-      has_transaction: truthyFlag(row.has_transaction),
-      has_due: truthyFlag(row.has_due),
-      has_completed: truthyFlag(row.has_completed),
+      has_transaction: hasTransaction,
+      has_due: hasDue,
+      has_completed: hasCompleted,
     });
   }
 
@@ -1829,7 +1832,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
            c.contact,
            c.email,
            c.block,
-           BOOL_OR(t.receipt_no IS NOT NULL) AS has_transaction,
+           BOOL_OR(t.subscriptionid IS NOT NULL) AS has_transaction,
            BOOL_OR(LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')) AS has_completed,
            BOOL_OR(LOWER(COALESCE(t.receiptstatus, '')) = 'due') AS has_due,
            COALESCE(SUM(t.subscriptionamount) FILTER (
