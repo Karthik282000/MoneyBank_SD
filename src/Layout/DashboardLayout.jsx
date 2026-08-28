@@ -8,7 +8,7 @@ function DashboardLayout({ children, user, onLogout }) {
     const navBtn = "group mb-2 flex items-center gap-3 text-left px-4 py-2.5 rounded-xl text-blue-50 transition-all duration-300 hover:bg-white/15 hover:text-white hover:translate-x-1";
 
     return (
-        <div className="flex h-screen w-screen overflow-hidden text-slate-800">
+        <div className="flex h-screen w-full max-w-full overflow-hidden text-slate-800">
 
             {/* ================= SIDEBAR (DESKTOP) ================= */}
             <div className="hidden md:flex flex-col w-64 bg-gradient-to-b from-blue-700 to-indigo-800 border-r border-blue-900/40 text-white p-5 flex-shrink-0 relative overflow-hidden">
@@ -141,17 +141,17 @@ function DashboardLayout({ children, user, onLogout }) {
             </div>
 
             {/* ================= MAIN CONTENT ================= */}
-            <div className="flex-1 flex flex-col h-screen overflow-hidden">
+            <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
 
                 {/* HEADER */}
-                <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200 px-6 py-3 flex justify-between items-center mt-14 md:mt-0 shadow-sm">
-                    <span className="text-slate-600">
+                <div className="bg-white/80 backdrop-blur-xl border-b border-slate-200 px-3 sm:px-6 py-2.5 md:py-3 flex items-center mt-14 md:mt-0 shadow-sm min-w-0">
+                    <span className="block min-w-0 truncate text-sm md:text-base text-slate-600">
                         Welcome, <b className="text-blue-600">{user}</b>
                     </span>
                 </div>
 
                 {/* PAGE CONTENT */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
                     {children}
                 </div>
 

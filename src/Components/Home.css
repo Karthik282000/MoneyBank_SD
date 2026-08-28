@@ -220,26 +220,16 @@
 
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
+  .chart-row {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
 
   .home {
-
-    padding: 30px 20px;
-
+    padding: 16px 12px;
+    max-width: 100%;
   }
-
-  .home h2 {
-
-    font-size: 28px;
-
-  }
-
-  .chart-row {
-
-    grid-template-columns: 1fr;
-
-  }
-
 }
 
 

@@ -54,7 +54,7 @@ function ChartTooltip({ active, payload }) {
 function PremiumDonut({ data = [], gradientPrefix }) {
   const total = data.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
   return (
-    <div className="relative h-[250px] w-full">
+    <div className="relative h-[200px] sm:h-[230px] md:h-[250px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <defs>
@@ -72,8 +72,8 @@ function PremiumDonut({ data = [], gradientPrefix }) {
           <Pie
             data={data}
             dataKey="value"
-            innerRadius={62}
-            outerRadius={92}
+            innerRadius="42%"
+            outerRadius="68%"
             paddingAngle={data.length > 1 ? 4 : 0}
             cornerRadius={8}
             stroke="none"
@@ -98,9 +98,9 @@ function PremiumDonut({ data = [], gradientPrefix }) {
       </ResponsiveContainer>
 
       {/* Center total overlay */}
-      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center -translate-y-3">
-        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Total</span>
-        <span className="text-3xl font-bold neon-text">{total}</span>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center -translate-y-2 sm:-translate-y-3">
+        <span className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] text-slate-500">Total</span>
+        <span className="text-2xl sm:text-3xl font-bold neon-text">{total}</span>
       </div>
     </div>
   );
@@ -321,48 +321,48 @@ function Home({ allowedBlocks = [] }) {
   });
 
   return (
-    <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
+    <div className="relative w-full min-h-full min-w-0 p-3 sm:p-5 md:p-8 overflow-x-hidden">
 
       {/* Ambient animated glow blobs */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />
       <div className="pointer-events-none absolute top-40 -right-24 h-80 w-80 rounded-full bg-indigo-400/20 blur-3xl animate-floatBlob" style={{ animationDelay: '3s' }} />
 
       {/* HEADER */}
-      <div className="relative mb-10 text-center">
-        <p className="text-xs uppercase tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab</p>
-        <h2 className="mt-2 text-3xl md:text-5xl font-bold tracking-tight neon-text">
+      <div className="relative mb-6 sm:mb-10 text-center px-1">
+        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab</p>
+        <h2 className="mt-2 text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight neon-text">
           Dashboard Overview
         </h2>
-        <div className="mx-auto mt-4 h-[2px] w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+        <div className="mx-auto mt-3 sm:mt-4 h-[2px] w-28 sm:w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
       </div>
 
       {/* OVERVIEW */}
-      <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
 
-        <div className="group glass-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow-violet">
-          <h4 className="mb-1 text-center text-sm font-semibold uppercase tracking-widest text-slate-500">
+        <div className="group glass-card min-w-0 p-4 sm:p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow-violet">
+          <h4 className="mb-1 text-center text-xs sm:text-sm font-semibold uppercase tracking-widest text-slate-500">
             Customers Status
           </h4>
           <PremiumDonut data={statusData} gradientPrefix="status" />
         </div>
 
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 min-w-0">
           {blockOverview.length === 0 ? (
-            <div className="sm:col-span-2 glass-card p-8 text-center text-slate-500">
+            <div className="sm:col-span-2 glass-card p-6 sm:p-8 text-center text-slate-500">
               No block data available for your access.
             </div>
           ) : (
             blockOverview.map((blk) => {
               const pct = blk.total ? Math.round((blk.completed / blk.total) * 100) : 0;
               return (
-                <div key={blk.block} className="glass-card p-5 flex flex-col">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.25em] text-blue-500 font-semibold">Block</p>
-                      <h3 className="text-2xl font-bold neon-text leading-tight">{blk.block}</h3>
+                <div key={blk.block} className="glass-card p-4 sm:p-5 flex flex-col min-w-0">
+                  <div className="flex items-start justify-between gap-2 mb-4">
+                    <div className="min-w-0">
+                      <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] sm:tracking-[0.25em] text-blue-500 font-semibold">Block</p>
+                      <h3 className="text-xl sm:text-2xl font-bold neon-text leading-tight break-words">{blk.block}</h3>
                     </div>
-                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                      {pct}% collected
+                    <span className="shrink-0 rounded-full bg-blue-50 px-2.5 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold text-blue-700">
+                      {pct}%<span className="hidden sm:inline"> collected</span>
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-4">
@@ -371,7 +371,7 @@ function Home({ allowedBlocks = [] }) {
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     {BLOCK_STATS.map((stat) => (
                       <button
                         key={stat.key}
@@ -389,10 +389,10 @@ function Home({ allowedBlocks = [] }) {
                             rows: blk.lists?.[stat.key] || [],
                           });
                         }}
-                        className="text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+                        className="text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5 min-w-0 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
                       >
-                        <p className="text-[11px] uppercase tracking-wider text-slate-500">{stat.label}</p>
-                        <p className={`mt-1 text-2xl font-bold bg-gradient-to-r ${stat.tile} bg-clip-text text-transparent`}>
+                        <p className="text-[10px] sm:text-[11px] uppercase tracking-wide sm:tracking-wider text-slate-500 leading-tight">{stat.label}</p>
+                        <p className={`mt-1 text-xl sm:text-2xl font-bold bg-gradient-to-r ${stat.tile} bg-clip-text text-transparent`}>
                           {blk[stat.key] ?? 0}
                         </p>
                       </button>
@@ -411,30 +411,30 @@ function Home({ allowedBlocks = [] }) {
 
         {/* HEADER */}
         <div
-          className="flex justify-between items-center p-5 cursor-pointer transition hover:bg-blue-50/70"
+          className="flex justify-between items-center gap-3 p-4 sm:p-5 cursor-pointer transition hover:bg-blue-50/70"
           onClick={() => setShowDue(!showDue)}
         >
-          <h4 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
-            <span className="h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.9)]" />
-            Due House List
+          <h4 className="flex items-center gap-2 text-base sm:text-lg font-semibold text-slate-800 min-w-0">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.9)]" />
+            <span className="truncate">Due House List</span>
           </h4>
-          <span className="text-blue-500 text-lg transition-transform duration-300" style={{ transform: showDue ? 'rotate(180deg)' : 'none' }}>
+          <span className="shrink-0 text-blue-500 text-lg transition-transform duration-300" style={{ transform: showDue ? 'rotate(180deg)' : 'none' }}>
             ▼
           </span>
         </div>
 
         {/* CONTENT */}
         {showDue && (
-          <div className="p-5 pt-0 animate-fadeIn space-y-4">
+          <div className="p-3 sm:p-5 pt-0 animate-fadeIn space-y-4">
 
-            <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-4 md:p-5">
+            <div className="rounded-2xl border border-rose-100 bg-rose-50/40 p-3 sm:p-4 md:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-rose-500 font-semibold">Query due receipts</p>
+                <p className="text-[10px] sm:text-xs uppercase tracking-[0.16em] sm:tracking-[0.2em] text-rose-500 font-semibold">Query due receipts</p>
                 <span className="text-xs font-medium text-slate-500">
                   {filteredDueList.length} of {dueHouseList.length}
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-4 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-3 sm:gap-x-4 gap-y-3 sm:gap-y-4 items-end">
                 <div className="field">
                   <label className="field-label">House no</label>
                   <input
@@ -490,7 +490,39 @@ function Home({ allowedBlocks = [] }) {
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="lg:hidden space-y-3">
+              {filteredDueList.length === 0 ? (
+                <p className="text-center p-4 text-slate-500">No due records</p>
+              ) : (
+                filteredDueList.map((row, idx) => (
+                  <div
+                    key={row.receipt_no || `${row.houseno}-${idx}`}
+                    className="rounded-xl border border-slate-200 bg-white p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 break-words">{row.name}</p>
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          House {row.houseno} · Block {row.block || '—'}
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-semibold text-blue-600">₹ {row.amount}</p>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2 break-all">
+                      Ref. {row.reference_receipt_no || '—'}
+                    </p>
+                    <button
+                      className="btn-neon w-full mt-3 !py-2 text-sm"
+                      onClick={() => handleCompleteDue(row)}
+                    >
+                      Complete
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="hidden lg:block overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm text-left">
 
                 <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white uppercase text-xs tracking-wider">
@@ -540,28 +572,28 @@ function Home({ allowedBlocks = [] }) {
 
       <div className="mt-6 glass-card overflow-hidden">
         <div
-          className="flex justify-between items-center p-5 cursor-pointer transition hover:bg-blue-50/70"
+          className="flex justify-between items-center gap-3 p-4 sm:p-5 cursor-pointer transition hover:bg-blue-50/70"
           onClick={() => setShowReceipts(!showReceipts)}
         >
-          <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
-            <span className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.7)]" />
-            Generated Receipts
+          <h3 className="flex items-center gap-2 text-base sm:text-lg font-semibold text-slate-800 min-w-0">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.7)]" />
+            <span className="truncate">Generated Receipts</span>
           </h3>
-          <span className="text-blue-500 text-lg transition-transform duration-300" style={{ transform: showReceipts ? 'rotate(180deg)' : 'none' }}>
+          <span className="shrink-0 text-blue-500 text-lg transition-transform duration-300" style={{ transform: showReceipts ? 'rotate(180deg)' : 'none' }}>
             ▼
           </span>
         </div>
 
         {showReceipts && (
-          <div className="px-5 pb-5 space-y-4 animate-fadeIn">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5">
+          <div className="px-3 sm:px-5 pb-4 sm:pb-5 space-y-4 animate-fadeIn">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3 sm:p-4 md:p-5">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-blue-500 font-semibold">Filter receipts</p>
+                <p className="text-[10px] sm:text-xs uppercase tracking-[0.16em] sm:tracking-[0.2em] text-blue-500 font-semibold">Filter receipts</p>
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
                   {filteredReceipts.length} match{filteredReceipts.length === 1 ? '' : 'es'}
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-4 gap-y-4 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-x-3 sm:gap-x-4 gap-y-3 sm:gap-y-4 items-end">
                 <div className="field">
                   <label className="field-label">House no</label>
                   <input
@@ -616,7 +648,36 @@ function Home({ allowedBlocks = [] }) {
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="lg:hidden space-y-3">
+              {filteredReceipts.length === 0 ? (
+                <p className="text-center p-4 text-slate-500">No receipts found</p>
+              ) : (
+                filteredReceipts.map((r, index) => (
+                  <div key={index} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 break-words">{r.name}</p>
+                        <p className="text-sm text-slate-500 mt-0.5">House {r.houseno}</p>
+                      </div>
+                      <p className="shrink-0 font-semibold text-blue-600">₹ {r.amount}</p>
+                    </div>
+                    <div className="mt-2 space-y-1 text-xs text-slate-500">
+                      <p className="break-all">Receipt {r.receipt_no}</p>
+                      <p className="break-all">Ref. {r.reference_receipt_no || '—'}</p>
+                      <p>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</p>
+                    </div>
+                    <button
+                      className="btn-neon w-full mt-3 !py-2 text-sm"
+                      onClick={() => openReceipt(r)}
+                    >
+                      View
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="hidden lg:block overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-sm">
 
                 <thead className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white uppercase text-xs tracking-wider text-left">
@@ -670,7 +731,7 @@ function Home({ allowedBlocks = [] }) {
 
       {/* MODAL */}
       {showReceiptModal && selectedReceipt && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 px-2 py-4">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white w-full max-w-xl rounded-2xl shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 overflow-y-auto max-h-[90vh] animate-fadeIn">
 
                   {/* Live rebuilt SVG (Mahastmi Bhog + DUE) — falls back to stored image / HTML */}
@@ -692,11 +753,11 @@ function Home({ allowedBlocks = [] }) {
                     </div>
                   ) : (
                   /* RECEIPT (fallback HTML layout) */
-                  <div className="border-2 border-dashed border-blue-700 m-3 p-4 text-blue-900 font-serif">
+                  <div className="border-2 border-dashed border-blue-700 m-3 p-3 sm:p-4 text-blue-900 font-serif">
 
                     {/* HEADER */}
-                    <div className="flex justify-between text-sm font-semibold">
-                      <span>No. {selectedReceipt.receipt_no}</span>
+                    <div className="flex flex-wrap justify-between gap-1 text-sm font-semibold">
+                      <span className="break-all">No. {selectedReceipt.receipt_no}</span>
                       <span className="text-gray-800">
                         Date: {new Date(selectedReceipt.created_at).toLocaleDateString()}
                       </span>
@@ -772,11 +833,11 @@ function Home({ allowedBlocks = [] }) {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-blue-800">
                         Please collect your "Mahastmi Bhog" from pandal Between 1 pm to 3 pm
                       </p>
-                      <div className="flex h-20 w-20 flex-col items-center justify-center border-2 border-blue-800 text-center">
+                      <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center border-2 border-blue-800 text-center mx-auto sm:mx-0">
                         <span className="text-[9px] font-bold text-blue-800">BHOG PACKETS</span>
                         <span className="text-2xl font-bold text-gray-800">{selectedReceipt.bhog || 0}</span>
                       </div>
@@ -789,7 +850,7 @@ function Home({ allowedBlocks = [] }) {
                     )}
 
                     {/* SIGNATURES */}
-                    <div className="grid grid-cols-3 text-center mt-6 text-xs gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 text-center mt-6 text-xs gap-4 sm:gap-2">
 
                       <div>
                         <p className="font-bold">{selectedReceipt.president || config?.president || "Sarbani Basu Roy"}</p>
@@ -841,18 +902,18 @@ function Home({ allowedBlocks = [] }) {
           );
         });
         return (
-        <div className={`fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-sm px-3 py-4 ${theme.overlay}`}>
-          <div className={`w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl animate-fadeIn flex flex-col ${theme.panel}`}>
-            <div className={`px-5 md:px-6 pt-5 pb-4 ${theme.header}`}>
+        <div className={`fixed inset-0 z-[9999] flex items-end sm:items-center justify-center backdrop-blur-sm p-0 sm:p-4 ${theme.overlay}`}>
+          <div className={`w-full max-w-4xl max-h-[92vh] overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl animate-fadeIn flex flex-col ${theme.panel}`}>
+            <div className={`px-4 sm:px-5 md:px-6 pt-4 sm:pt-5 pb-4 ${theme.header}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className={`text-[11px] uppercase tracking-[0.25em] font-semibold ${theme.eyebrow}`}>
+                <div className="min-w-0">
+                  <p className={`text-[10px] sm:text-[11px] uppercase tracking-[0.2em] sm:tracking-[0.25em] font-semibold ${theme.eyebrow}`}>
                     Block {statModal.block}
                   </p>
-                  <h3 className="text-2xl font-bold mt-1">{statModal.label}</h3>
+                  <h3 className="text-xl sm:text-2xl font-bold mt-1">{statModal.label}</h3>
                   <p className="text-sm mt-1 opacity-90">{statModal.hint}</p>
                 </div>
-                <span className={`rounded-full px-3 py-1 text-sm font-semibold ring-1 ${statModal.chip}`}>
+                <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold ring-1 ${statModal.chip}`}>
                   {statModal.rows.length} member{statModal.rows.length === 1 ? '' : 's'}
                 </span>
               </div>
@@ -869,7 +930,46 @@ function Home({ allowedBlocks = [] }) {
               {rows.length === 0 ? (
                 <p className="p-8 text-center text-slate-500">No members in this category.</p>
               ) : (
-                  <table className="w-full text-sm text-left">
+                <>
+                  <div className="lg:hidden p-3 space-y-3">
+                    {rows.map((m, idx) => {
+                      const amountLabel = statModal.key === 'notCompleted'
+                        ? '—'
+                        : `₹ ${Number(
+                            statModal.key === 'due' ? m.due_amount : m.collected_amount || 0
+                          ).toFixed(2)}`;
+                      return (
+                        <div
+                          key={`${m.houseno}-${m.name}-${idx}`}
+                          className="rounded-xl border border-slate-200 bg-white p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900 break-words">{m.name}</p>
+                              <p className="text-sm text-slate-500 mt-0.5">House {m.houseno}</p>
+                            </div>
+                            <p className={`shrink-0 font-semibold ${theme.amount}`}>{amountLabel}</p>
+                          </div>
+                          <div className="mt-2 space-y-1 text-xs text-slate-500">
+                            <p className="break-all">{m.contact || 'No contact'}</p>
+                            <p className="break-all">{m.email || 'No email'}</p>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1">
+                            {m.has_completed && (
+                              <span className="rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-semibold">Collected</span>
+                            )}
+                            {m.has_due && (
+                              <span className="rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[11px] font-semibold">Due</span>
+                            )}
+                            {!m.has_transaction && (
+                              <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[11px] font-semibold">No txn</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <table className="hidden lg:table w-full text-sm text-left">
                     <thead className={`sticky top-0 uppercase text-[11px] tracking-wider ${theme.thead}`}>
                       <tr>
                         <th className="px-5 py-3 font-semibold">House</th>
@@ -913,6 +1013,7 @@ function Home({ allowedBlocks = [] }) {
                       ))}
                     </tbody>
                   </table>
+                </>
               )}
             </div>
 
