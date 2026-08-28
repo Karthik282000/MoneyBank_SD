@@ -295,31 +295,6 @@ function FormComponent({ allowedBlocks }) {
     return true;
   };
 
-  // Manual "Send WhatsApp" button — uses whatever is currently in the form + last receipt.
-  const sendWhatsAppMessage = () => {
-    if (!formData.contact) {
-      alert("Customer contact number not available");
-      return;
-    }
-
-    if (!formData.receiptNo) {
-      alert("Please save transaction first");
-      return;
-    }
-
-    openWhatsApp({
-      contact: formData.contact,
-      name: formData.name,
-      receiptNo: formData.receiptNo,
-      houseNo: formData.houseNo,
-      amountPaid: formData.amountPaid,
-      yearOfPayment: formData.yearOfPayment,
-      paymentMode: formData.paymentMode,
-      // Send the SVG image link so the customer can open/download it on any device
-      receiptLink: receiptData?.receiptImageUrl || receiptData?.receiptViewUrl,
-    });
-  };
-
   // Programmatically trigger a file download in the browser
   const triggerDownload = (href, filename) => {
     const a = document.createElement("a");
@@ -1136,32 +1111,6 @@ function FormComponent({ allowedBlocks }) {
             className="btn-neon min-w-[180px]"
           >
             {loading ? "Processing..." : completingDue ? "Complete Transaction" : "Save Transaction"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (!formData.receiptNo) {
-                alert("No receipt generated yet");
-                return;
-              }
-
-              setReceiptData(
-                buildReceiptData(formData, formData.receiptNo)
-              );
-              setShowReceiptModal(true);
-            }}
-            className="btn-ghost"
-          >
-            Preview Receipt
-          </button>
-
-          <button
-            type="button"
-            onClick={sendWhatsAppMessage}
-            className="inline-flex items-center justify-center rounded-xl px-5 py-2.5 font-semibold text-white bg-gradient-to-r from-emerald-500 to-green-600 shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300 hover:-translate-y-0.5"
-          >
-            Send WhatsApp
           </button>
 
           {showCreateButton && (

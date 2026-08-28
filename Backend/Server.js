@@ -19,6 +19,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Put your Durga Devi image at ./assets/durga-bg.png (or .jpg) relative to server.js
 const DURGA_BG_PATH = path.join(__dirname, 'assets', 'DurgaMAAIMAGE.jpg');
+const RECEIPT_LOGO_PATH = path.join(__dirname, 'assets', 'Logo.jpeg');
 
 let DURGA_BG_DATA_URI = '';
 try {
@@ -29,6 +30,15 @@ try {
   console.log('✅ Durga background image loaded for receipts');
 } catch (err) {
   console.warn('⚠️ Durga background image not found — receipts will render without it:', err.message);
+}
+
+let RECEIPT_LOGO_DATA_URI = '';
+try {
+  const logoBuffer = fs.readFileSync(RECEIPT_LOGO_PATH);
+  RECEIPT_LOGO_DATA_URI = `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
+  console.log('✅ Receipt logo loaded');
+} catch (err) {
+  console.warn('⚠️ Receipt logo not found — receipts will render without it:', err.message);
 }
 
 const { Pool } = pkg;
@@ -576,11 +586,30 @@ function buildReceiptSvg(receiptData = {}, config = {}) {
          opacity="0.10" preserveAspectRatio="xMidYMid slice" clip-path="url(#cardClip)"/>
   ` : '';
 
+  const logoSize = 88;
+  const logoX = 40;
+  const logoY = 74;
+  const logoSection = RECEIPT_LOGO_DATA_URI ? `
+  <defs>
+    <clipPath id="receiptLogoClip">
+      <rect x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" rx="10"/>
+    </clipPath>
+    <filter id="receiptLogoShadow" x="-18%" y="-18%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1.25" stdDeviation="1.4" flood-color="${blue}" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <rect x="${logoX - 4}" y="${logoY - 4}" width="${logoSize + 8}" height="${logoSize + 8}" rx="12" fill="#fffaf2" stroke="${blue}" stroke-width="1.6" filter="url(#receiptLogoShadow)"/>
+  <rect x="${logoX - 1.5}" y="${logoY - 1.5}" width="${logoSize + 3}" height="${logoSize + 3}" rx="10.5" fill="none" stroke="#c5a059" stroke-width="0.85"/>
+  <image href="${RECEIPT_LOGO_DATA_URI}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}"
+         preserveAspectRatio="xMidYMid slice" clip-path="url(#receiptLogoClip)"/>
+  ` : '';
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Georgia, 'Times New Roman', serif">
   <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
   <rect x="16" y="16" width="${width - 32}" height="${height - 32}" fill="#ffffff" stroke="${blue}" stroke-width="2" stroke-dasharray="8 6" rx="8"/>
 ${bgImageSection}
+${logoSection}
 ${dueSection}
   <text x="40" y="60" font-size="18" fill="${blue}" font-weight="bold">No. <tspan fill="${dark}">${escapeXml(receiptData.receiptNo)}</tspan></text>
   <text x="${width - 40}" y="60" font-size="18" fill="${blue}" font-weight="bold" text-anchor="end">Date: <tspan fill="${dark}">${escapeXml(receiptData.date)}</tspan></text>
