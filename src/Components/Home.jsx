@@ -106,12 +106,92 @@ function PremiumDonut({ data = [], gradientPrefix }) {
   );
 }
 
+const BLOCK_STATS = [
+  {
+    key: 'total',
+    label: 'Total people',
+    hint: 'Active members in this block',
+    tile: 'from-indigo-500 to-blue-500',
+    chip: 'bg-white/20 text-white ring-white/30',
+    amountKey: null,
+    modal: {
+      overlay: 'bg-indigo-950/45',
+      panel: 'ring-2 ring-indigo-300',
+      header: 'bg-gradient-to-r from-indigo-600 to-blue-500 text-white',
+      eyebrow: 'text-indigo-100',
+      thead: 'bg-indigo-600 text-white',
+      row: 'hover:bg-indigo-50/80',
+      amount: 'text-indigo-700',
+      footer: 'bg-indigo-50 border-indigo-100',
+      close: 'bg-gradient-to-r from-indigo-600 to-blue-600',
+    },
+  },
+  {
+    key: 'completed',
+    label: 'Completed',
+    hint: 'At least one collected transaction',
+    tile: 'from-emerald-500 to-teal-500',
+    chip: 'bg-white/20 text-white ring-white/30',
+    amountKey: 'collected_amount',
+    modal: {
+      overlay: 'bg-emerald-950/45',
+      panel: 'ring-2 ring-emerald-300',
+      header: 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white',
+      eyebrow: 'text-emerald-100',
+      thead: 'bg-emerald-600 text-white',
+      row: 'hover:bg-emerald-50/80',
+      amount: 'text-emerald-700',
+      footer: 'bg-emerald-50 border-emerald-100',
+      close: 'bg-gradient-to-r from-emerald-600 to-teal-600',
+    },
+  },
+  {
+    key: 'notCompleted',
+    label: 'Not completed',
+    hint: 'No transaction yet',
+    tile: 'from-slate-500 to-slate-600',
+    chip: 'bg-white/20 text-white ring-white/30',
+    amountKey: null,
+    modal: {
+      overlay: 'bg-slate-900/50',
+      panel: 'ring-2 ring-slate-300',
+      header: 'bg-gradient-to-r from-slate-600 to-slate-700 text-white',
+      eyebrow: 'text-slate-200',
+      thead: 'bg-slate-600 text-white',
+      row: 'hover:bg-slate-50',
+      amount: 'text-slate-600',
+      footer: 'bg-slate-100 border-slate-200',
+      close: 'bg-gradient-to-r from-slate-600 to-slate-700',
+    },
+  },
+  {
+    key: 'due',
+    label: 'Due receipts',
+    hint: 'Open due receipt on file',
+    tile: 'from-rose-500 to-orange-500',
+    chip: 'bg-white/20 text-white ring-white/30',
+    amountKey: 'due_amount',
+    modal: {
+      overlay: 'bg-rose-950/45',
+      panel: 'ring-2 ring-rose-300',
+      header: 'bg-gradient-to-r from-rose-600 to-orange-500 text-white',
+      eyebrow: 'text-rose-100',
+      thead: 'bg-rose-600 text-white',
+      row: 'hover:bg-rose-50/80',
+      amount: 'text-rose-700',
+      footer: 'bg-rose-50 border-rose-100',
+      close: 'bg-gradient-to-r from-rose-600 to-orange-500',
+    },
+  },
+];
+
 function Home({ allowedBlocks = [] }) {
   const navigate = useNavigate();
   const [statusData, setStatusData] = useState([]);
-  const [modeData, setModeData] = useState([]);
-  const [receiptStatusData, setReceiptStatusData] = useState([]);
+  const [blockOverview, setBlockOverview] = useState([]);
   const [dueHouseList, setDueHouseList] = useState([]);
+  const [statModal, setStatModal] = useState(null);
+  const [statSearch, setStatSearch] = useState('');
 
   const [receipts, setReceipts] = useState([]);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
@@ -168,28 +248,14 @@ function Home({ allowedBlocks = [] }) {
           { name: 'Pending', value: cs.pending || 0 }
         ]);
 
-        setModeData(
-          (data.paymentModes || []).map(d => ({
-            name: d.mode,
-            value: Number(d.count)
-          }))
-        );
-
-        const rs = data.receiptStatus || {};
-        setReceiptStatusData([
-          { name: 'Collected', value: rs.collected || 0 },
-          { name: 'Due', value: rs.due || 0 },
-          { name: 'Pending', value: rs.pending || 0 }
-        ]);
-
         setDueHouseList(data.dueHousenos || []);
+        setBlockOverview(data.blockOverview || []);
       })
       .catch(err => {
         console.error(err);
         setStatusData([]);
-        setModeData([]);
-        setReceiptStatusData([]);
         setDueHouseList([]);
+        setBlockOverview([]);
       });
   }, [allowedBlocks]);  // ✅ IMPORTANT DEPENDENCY
 
@@ -270,10 +336,9 @@ function Home({ allowedBlocks = [] }) {
         <div className="mx-auto mt-4 h-[2px] w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
       </div>
 
-      {/* CHARTS */}
-      <div className="relative grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* OVERVIEW */}
+      <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* CARD */}
         <div className="group glass-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow-violet">
           <h4 className="mb-1 text-center text-sm font-semibold uppercase tracking-widest text-slate-500">
             Customers Status
@@ -281,20 +346,63 @@ function Home({ allowedBlocks = [] }) {
           <PremiumDonut data={statusData} gradientPrefix="status" />
         </div>
 
-        <div className="group glass-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow-violet">
-          <h4 className="mb-1 text-center text-sm font-semibold uppercase tracking-widest text-slate-500">
-            Payment Modes
-          </h4>
-          <PremiumDonut data={modeData} gradientPrefix="mode" />
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {blockOverview.length === 0 ? (
+            <div className="sm:col-span-2 glass-card p-8 text-center text-slate-500">
+              No block data available for your access.
+            </div>
+          ) : (
+            blockOverview.map((blk) => {
+              const pct = blk.total ? Math.round((blk.completed / blk.total) * 100) : 0;
+              return (
+                <div key={blk.block} className="glass-card p-5 flex flex-col">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.25em] text-blue-500 font-semibold">Block</p>
+                      <h3 className="text-2xl font-bold neon-text leading-tight">{blk.block}</h3>
+                    </div>
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                      {pct}% collected
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden mb-4">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {BLOCK_STATS.map((stat) => (
+                      <button
+                        key={stat.key}
+                        type="button"
+                        onClick={() => {
+                          setStatSearch('');
+                          setStatModal({
+                            block: blk.block,
+                            key: stat.key,
+                            label: stat.label,
+                            hint: stat.hint,
+                            chip: stat.chip,
+                            amountKey: stat.amountKey,
+                            modal: stat.modal,
+                            rows: blk.lists?.[stat.key] || [],
+                          });
+                        }}
+                        className="text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-3.5 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+                      >
+                        <p className="text-[11px] uppercase tracking-wider text-slate-500">{stat.label}</p>
+                        <p className={`mt-1 text-2xl font-bold bg-gradient-to-r ${stat.tile} bg-clip-text text-transparent`}>
+                          {blk[stat.key] ?? 0}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
-
-        <div className="group glass-card p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-glow-violet">
-          <h4 className="mb-1 text-center text-sm font-semibold uppercase tracking-widest text-slate-500">
-            Receipt Status
-          </h4>
-          <PremiumDonut data={receiptStatusData} gradientPrefix="receipt" />
-        </div>
-
       </div>
 
       {/* DUE TABLE */}
@@ -720,6 +828,110 @@ function Home({ allowedBlocks = [] }) {
           </div>
         </div>
       )}
+
+      {statModal && (() => {
+        const theme = statModal.modal || BLOCK_STATS[0].modal;
+        const q = statSearch.trim().toLowerCase();
+        const rows = (statModal.rows || []).filter((m) => {
+          if (!q) return true;
+          return (
+            String(m.houseno || '').toLowerCase().includes(q) ||
+            String(m.name || '').toLowerCase().includes(q) ||
+            String(m.contact || '').toLowerCase().includes(q)
+          );
+        });
+        return (
+        <div className={`fixed inset-0 z-[9999] flex items-center justify-center backdrop-blur-sm px-3 py-4 ${theme.overlay}`}>
+          <div className={`w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl animate-fadeIn flex flex-col ${theme.panel}`}>
+            <div className={`px-5 md:px-6 pt-5 pb-4 ${theme.header}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={`text-[11px] uppercase tracking-[0.25em] font-semibold ${theme.eyebrow}`}>
+                    Block {statModal.block}
+                  </p>
+                  <h3 className="text-2xl font-bold mt-1">{statModal.label}</h3>
+                  <p className="text-sm mt-1 opacity-90">{statModal.hint}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-sm font-semibold ring-1 ${statModal.chip}`}>
+                  {statModal.rows.length} member{statModal.rows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <input
+                type="text"
+                value={statSearch}
+                onChange={(e) => setStatSearch(e.target.value)}
+                placeholder="Search house no or name…"
+                className="mt-4 w-full h-12 rounded-xl bg-white/95 border-0 px-4 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-white/60"
+              />
+            </div>
+
+            <div className="overflow-auto flex-1">
+              {rows.length === 0 ? (
+                <p className="p-8 text-center text-slate-500">No members in this category.</p>
+              ) : (
+                  <table className="w-full text-sm text-left">
+                    <thead className={`sticky top-0 uppercase text-[11px] tracking-wider ${theme.thead}`}>
+                      <tr>
+                        <th className="px-5 py-3 font-semibold">House</th>
+                        <th className="px-5 py-3 font-semibold">Name</th>
+                        <th className="px-5 py-3 font-semibold">Contact</th>
+                        <th className="px-5 py-3 font-semibold">Email</th>
+                        <th className="px-5 py-3 font-semibold">
+                          {statModal.key === 'due' ? 'Due amount' : 'Collected'}
+                        </th>
+                        <th className="px-5 py-3 font-semibold">Flags</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {rows.map((m, idx) => (
+                        <tr key={`${m.houseno}-${m.name}-${idx}`} className={theme.row}>
+                          <td className="px-5 py-3 font-semibold text-slate-900">{m.houseno}</td>
+                          <td className="px-5 py-3 text-slate-700">{m.name}</td>
+                          <td className="px-5 py-3 text-slate-600">{m.contact || '—'}</td>
+                          <td className="px-5 py-3 text-slate-600">{m.email || '—'}</td>
+                          <td className={`px-5 py-3 font-semibold ${theme.amount}`}>
+                            {statModal.key === 'notCompleted'
+                              ? '—'
+                              : `₹ ${Number(
+                                  statModal.key === 'due' ? m.due_amount : m.collected_amount || 0
+                                ).toFixed(2)}`}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {m.has_completed && (
+                                <span className="rounded-full bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-semibold">Collected</span>
+                              )}
+                              {m.has_due && (
+                                <span className="rounded-full bg-rose-50 text-rose-700 px-2 py-0.5 text-[11px] font-semibold">Due</span>
+                              )}
+                              {!m.has_transaction && (
+                                <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[11px] font-semibold">No txn</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+              )}
+            </div>
+
+            <div className={`p-4 border-t ${theme.footer}`}>
+              <button
+                type="button"
+                className={`w-full inline-flex items-center justify-center rounded-xl px-5 py-2.5 font-semibold text-white shadow-md transition hover:-translate-y-0.5 ${theme.close}`}
+                onClick={() => {
+                  setStatModal(null);
+                  setStatSearch('');
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
     </div>
   );

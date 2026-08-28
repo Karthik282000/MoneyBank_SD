@@ -1701,7 +1701,59 @@ app.post('/api/dashboard/due-housenos', async (req, res) => {
 });
 
 
-// Combined dashboard summary — returns all four datasets in a single round-trip
+function truthyFlag(v) {
+  return v === true || v === 't' || v === 'true' || v === 1;
+}
+
+function isRealBlock(value) {
+  const b = String(value || '').trim();
+  return b.length > 0 && b !== '—' && b !== '-' && b.toUpperCase() !== 'ALLBLOCKS';
+}
+
+function buildBlockOverview(rows, allowedBlocks) {
+  const grouped = {};
+  for (const row of rows) {
+    const block = String(row.block || '').trim();
+    if (!isRealBlock(block)) continue;
+    if (!grouped[block]) grouped[block] = [];
+    grouped[block].push({
+      houseno: row.houseno,
+      name: row.name,
+      contact: row.contact,
+      email: row.email,
+      block,
+      collected_amount: Number(row.collected_amount || 0),
+      due_amount: Number(row.due_amount || 0),
+      has_transaction: truthyFlag(row.has_transaction),
+      has_due: truthyFlag(row.has_due),
+      has_completed: truthyFlag(row.has_completed),
+    });
+  }
+
+  const blocks = normalizeBlocks(allowedBlocks);
+  let keys;
+  if (blocks.length > 0 && !blocks.includes('ALLBLOCKS')) {
+    keys = blocks.filter(b => b && b !== 'ALLBLOCKS');
+  } else {
+    keys = Object.keys(grouped);
+  }
+  keys = [...new Set(keys)].sort((a, b) => String(a).localeCompare(String(b)));
+
+  return keys.map((block) => {
+    const members = grouped[block] || [];
+    const completed = members.filter(m => m.has_completed);
+    const notCompleted = members.filter(m => !m.has_transaction);
+    const due = members.filter(m => m.has_due);
+    return {
+      block,
+      total: members.length,
+      completed: completed.length,
+      notCompleted: notCompleted.length,
+      due: due.length,
+      lists: { total: members, completed, notCompleted, due },
+    };
+  });
+}
 app.post('/api/dashboard/summary', async (req, res) => {
   const { allowedBlocks } = req.body;
   const scoped =
@@ -1710,7 +1762,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
   const blockClause = (alias) => (scoped ? ` AND ${alias}.block = ANY($1)` : '');
 
   try {
-    const [paidRes, pendingRes, modesRes, receiptRes, dueRes] = await Promise.all([
+    const [paidRes, pendingRes, modesRes, receiptRes, dueRes, membersRes] = await Promise.all([
       pool.query(
         `SELECT COUNT(DISTINCT c.subscriber_id) AS paid
          FROM CollectionDetails c
@@ -1770,6 +1822,30 @@ app.post('/api/dashboard/summary', async (req, res) => {
          ORDER BY c.houseno`,
         blockValues
       ),
+      pool.query(
+        `SELECT
+           c.houseno,
+           c.name,
+           c.contact,
+           c.email,
+           c.block,
+           BOOL_OR(t.receipt_no IS NOT NULL) AS has_transaction,
+           BOOL_OR(LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')) AS has_completed,
+           BOOL_OR(LOWER(COALESCE(t.receiptstatus, '')) = 'due') AS has_due,
+           COALESCE(SUM(t.subscriptionamount) FILTER (
+             WHERE LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')
+           ), 0) AS collected_amount,
+           COALESCE(SUM(t.subscriptionamount) FILTER (
+             WHERE LOWER(COALESCE(t.receiptstatus, '')) = 'due'
+           ), 0) AS due_amount
+         FROM CollectionDetails c
+         LEFT JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
+         LEFT JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
+         WHERE c.state = 'active'${blockClause('c')}
+         GROUP BY c.subscriber_id, c.houseno, c.name, c.contact, c.email, c.block
+         ORDER BY c.block, c.houseno`,
+        blockValues
+      ),
     ]);
 
     res.json({
@@ -1784,6 +1860,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
         pending: parseInt(receiptRes.rows[0].pending, 10),
       },
       dueHousenos: dueRes.rows,
+      blockOverview: buildBlockOverview(membersRes.rows, allowedBlocks),
     });
   } catch (err) {
     console.error('Dashboard summary failed:', err);

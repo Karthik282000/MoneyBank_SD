@@ -409,9 +409,9 @@ function SearchPeople({ allowedBlocks }) {
                     <th className="px-5 py-3 font-semibold">Contact</th>
                     <th className="px-5 py-3 font-semibold">Block</th>
                     <th className="px-5 py-3 font-semibold">Year</th>
-                    <th className="px-5 py-3 font-semibold">Ref. Receipt</th>
-                    <th className="px-5 py-3 font-semibold">Last year</th>
-                    <th className="px-5 py-3 font-semibold">This year</th>
+                    {/* <th className="px-5 py-3 font-semibold">Ref. Receipt</th> */}
+                    <th className="px-5 py-3 font-semibold">Amount Paid Last year</th>
+                    <th className="px-5 py-3 font-semibold">Amount Paid This year</th>
                     <th className="px-5 py-3 font-semibold">Status</th>
                   </tr>
                 </thead>
@@ -427,7 +427,7 @@ function SearchPeople({ allowedBlocks }) {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-slate-600">{item.year || '—'}</td>
-                      <td className="px-5 py-3.5 text-slate-600">{item.referenceReceiptNo || '—'}</td>
+                      {/* <td className="px-5 py-3.5 text-slate-600">{item.referenceReceiptNo || '—'}</td> */}
                       <td className="px-5 py-3.5 text-slate-600">₹{Number(item.amountPaidLastYear || 0).toFixed(2)}</td>
                       <td className="px-5 py-3.5 font-semibold text-blue-700">₹{item.totalAmount.toFixed(2)}</td>
                       <td className="px-5 py-3.5">
