@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './FormComponents.css';
 import { API_BASE_URL } from './Constants.jsx';
+import { FORM_BLOCK_OPTIONS, isOutsideBlock, blockLabel } from './blockAccess.js';
 
 // ...numberToWords and buildReceiptData remain unchanged...
 
@@ -33,7 +34,11 @@ function buildReceiptData(formData, receiptNo) {
     receiptNo: receiptNo || formData.receiptNo || '',
     date: dateStr,
     name: formData.name,
-    address: `${formData.houseNo}${formData.block ? ', Block ' + formData.block : ''}`,
+    address: `${formData.houseNo}${
+      formData.block
+        ? (isOutsideBlock(formData.block) ? ', Outside society' : ', Block ' + formData.block)
+        : ''
+    }`,
     amountFigure: formData.amountPaid,
     amountWords: numberToWords(Number(formData.amountPaid)),
     paymentMode: formData.paymentMode,
@@ -119,8 +124,8 @@ function FormComponent({ allowedBlocks }) {
   // restricted users can only ever pick (and therefore create in) their own blocks.
   const isAllAccess = Array.isArray(allowedBlocks) && allowedBlocks.includes('ALLBLOCKS');
   const blockOptions = isAllAccess
-    ? ['A', 'B', 'C', 'D']
-    : (Array.isArray(allowedBlocks) ? allowedBlocks.filter(b => b !== 'ALLBLOCKS') : []);
+    ? FORM_BLOCK_OPTIONS
+    : (Array.isArray(allowedBlocks) ? allowedBlocks.filter(b => b !== 'ALLBLOCKS' && b !== 'NO_OUTSIDE') : []);
 
   useEffect(() => {
     // eslint-disable-next-line
@@ -934,7 +939,7 @@ function FormComponent({ allowedBlocks }) {
             >
               <option value="">Select Block</option>
               {blockOptions.map(b => (
-                <option key={b} value={b}>{b}</option>
+                <option key={b} value={b}>{blockLabel(b)}</option>
               ))}
             </select>
           </div>

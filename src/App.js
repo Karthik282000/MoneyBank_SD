@@ -10,6 +10,7 @@ import SearchPeople from './Components/SearchPeople.jsx';
 import AdminConfig from "./Components/AdminConfig.jsx";
 import DashboardLayout from "./Layout/DashboardLayout.jsx";
 import { API_BASE_URL } from './Components/Constants.jsx';
+import { withDefaultOutsideAccess } from './Components/blockAccess.js';
 
 // Normalize allowed_blocks into a clean JS array regardless of how it arrives:
 //   ['A','B']  |  '["A","B"]'  |  '{"A","B"}'  |  '{A,B}'  |  'A,B'
@@ -81,7 +82,7 @@ function App() {
   }, []);
 
   const handleLogin = (email, blocks = []) => {
-    const normalized = parseBlocks(blocks);
+    const normalized = withDefaultOutsideAccess(parseBlocks(blocks));
     setLoggedInUser(email);
     setAllowedBlocks(normalized);
 

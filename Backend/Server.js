@@ -156,6 +156,45 @@ function normalizeBlocks(value) {
   return [];
 }
 
+const SOCIETY_BLOCKS = ['A', 'B', 'C', 'D'];
+const OUTSIDE_BLOCK = 'Outside';
+const NO_OUTSIDE_FLAG = 'NO_OUTSIDE';
+
+function isOutsideBlock(block) {
+  const v = String(block || '').trim();
+  return v === OUTSIDE_BLOCK || v.toUpperCase() === 'OUTSIDE';
+}
+
+function canonicalizeBlock(block) {
+  if (isOutsideBlock(block)) return OUTSIDE_BLOCK;
+  return block;
+}
+
+function hasSocietyAccess(list) {
+  return list.includes('ALLBLOCKS') || list.some((b) => SOCIETY_BLOCKS.includes(b));
+}
+
+function withDefaultOutsideAccess(blocks) {
+  const list = [...new Set(normalizeBlocks(blocks).map(canonicalizeBlock))];
+  if (list.includes(NO_OUTSIDE_FLAG)) {
+    return list.filter((b) => b !== NO_OUTSIDE_FLAG && !isOutsideBlock(b));
+  }
+  if (hasSocietyAccess(list) && !list.some(isOutsideBlock)) {
+    return [...list, OUTSIDE_BLOCK];
+  }
+  return list;
+}
+
+function blocksForStorage(blocks) {
+  const list = [...new Set(normalizeBlocks(blocks))];
+  if (list.includes('ALLBLOCKS')) return ['ALLBLOCKS'];
+  const wantsOutside = list.some(isOutsideBlock);
+  const cleaned = list.filter((b) => b !== NO_OUTSIDE_FLAG && !isOutsideBlock(b));
+  if (wantsOutside) return [...cleaned, OUTSIDE_BLOCK];
+  if (hasSocietyAccess(cleaned)) return [...cleaned, NO_OUTSIDE_FLAG];
+  return cleaned;
+}
+
 // Fetch the current signatory config (names shown on receipts).
 async function getReceiptConfig(executor = pool) {
   try {
@@ -1431,7 +1470,7 @@ app.post('/api/login', async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      res.json({ success: true, allowedBlocks: normalizeBlocks(user.allowed_blocks), sessionId: SERVER_SESSION_ID });
+      res.json({ success: true, allowedBlocks: withDefaultOutsideAccess(user.allowed_blocks), sessionId: SERVER_SESSION_ID });
     } else {
       res.json({ success: false });
     }
@@ -1456,7 +1495,7 @@ app.post('/api/add-user', async (req, res) => {
 
     await pool.query(
       'INSERT INTO Logincredentials (email, password, allowed_blocks) VALUES ($1, $2, $3)',
-      [email, password, blocks]
+      [email, password, blocksForStorage(blocks)]
     );
     res.json({ success: true });
   } catch (err) {
@@ -1478,7 +1517,7 @@ app.get('/api/user-blocks', async (req, res) => {
     if (result.rows.length === 0) {
       return res.json({ found: false, blocks: [] });
     }
-    res.json({ found: true, blocks: normalizeBlocks(result.rows[0].allowed_blocks) });
+    res.json({ found: true, blocks: withDefaultOutsideAccess(result.rows[0].allowed_blocks) });
   } catch (err) {
     console.error('Error fetching user blocks:', err);
     res.status(500).json({ error: 'Failed to fetch user blocks' });
@@ -1492,7 +1531,7 @@ app.post('/api/update-user', async (req, res) => {
   try {
     await pool.query(
       'UPDATE Logincredentials SET password = $1, allowed_blocks = $2 WHERE email = $3',
-      [password, blocks, email]
+      [password, blocksForStorage(blocks), email]
     );
     res.json({ success: true });
   } catch (err) {
@@ -1742,7 +1781,8 @@ function isRealBlock(value) {
 function buildBlockOverview(rows, allowedBlocks) {
   const grouped = {};
   for (const row of rows) {
-    const block = String(row.block || '').trim();
+    const rawBlock = String(row.block || '').trim();
+    const block = isOutsideBlock(rawBlock) ? OUTSIDE_BLOCK : rawBlock;
     if (!isRealBlock(block)) continue;
     if (!grouped[block]) grouped[block] = [];
     const hasCompleted = truthyFlag(row.has_completed);
@@ -1762,14 +1802,18 @@ function buildBlockOverview(rows, allowedBlocks) {
     });
   }
 
-  const blocks = normalizeBlocks(allowedBlocks);
+  const blocks = normalizeBlocks(allowedBlocks).filter(b => b !== NO_OUTSIDE_FLAG);
   let keys;
   if (blocks.length > 0 && !blocks.includes('ALLBLOCKS')) {
     keys = blocks.filter(b => b && b !== 'ALLBLOCKS');
   } else {
     keys = Object.keys(grouped);
+    if (!keys.some(isOutsideBlock)) keys.push(OUTSIDE_BLOCK);
   }
-  keys = [...new Set(keys)].sort((a, b) => String(a).localeCompare(String(b)));
+  keys = [...new Set(keys)].sort((a, b) => {
+    const order = { A: 1, B: 2, C: 3, D: 4, [OUTSIDE_BLOCK]: 5, OUTSIDE: 5 };
+    return (order[a] || 50) - (order[b] || 50) || String(a).localeCompare(String(b));
+  });
 
   return keys.map((block) => {
     const members = grouped[block] || [];
@@ -2143,13 +2187,16 @@ app.get('/api/receipts', async (req, res) => {
         r.treasurer,
         r.bhog,
         r.status,
-        COALESCE(NULLIF(TRIM(t.reference_receipt_no), ''), r.reference_receipt_no) AS reference_receipt_no
+        COALESCE(NULLIF(TRIM(t.reference_receipt_no), ''), r.reference_receipt_no) AS reference_receipt_no,
+        c.block
       FROM Receipts r
       LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no`;
     const values = [];
     if (scoped) {
       query += ` JOIN CollectionDetails c ON c.houseno = r.houseno AND c.block = ANY($1)`;
       values.push(allowedBlocks);
+    } else {
+      query += ` LEFT JOIN CollectionDetails c ON c.houseno = r.houseno AND c.name = r.name AND c.state = 'active'`;
     }
     query += ` ORDER BY r.created_at DESC`;
 

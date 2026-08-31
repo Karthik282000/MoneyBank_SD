@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import axios from 'axios';
 import './SearchPeople.css';
 import { API_BASE_URL } from './Constants.jsx';
+import { OUTSIDE_BLOCK, blockLabel, blockPhrase, isOutsideBlock, outsideRowClass } from './blockAccess.js';
 
 function extractYear(value) {
   if (value == null || value === '') return null;
@@ -31,6 +32,15 @@ function statusTone(item) {
   const rs = (item.receiptStatus || '').toLowerCase();
   if (rs === 'due') return 'bg-rose-50 text-rose-600 ring-rose-200';
   return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+}
+
+function outsideMark(block) {
+  if (!isOutsideBlock(block)) return null;
+  return (
+    <span className="mr-2 inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+      Outside
+    </span>
+  );
 }
 
 function SearchPeople({ allowedBlocks }) {
@@ -73,11 +83,14 @@ function SearchPeople({ allowedBlocks }) {
   const blockOptions = useMemo(() => {
     if (isAllAccess) {
       const distinct = Array.from(
-        new Set(allData.map(d => d.block).filter(Boolean))
+        new Set([
+          ...allData.map(d => d.block).filter(Boolean),
+          OUTSIDE_BLOCK,
+        ])
       );
-      return distinct.sort();
+      return distinct.filter(b => b !== 'ALLBLOCKS' && b !== 'NO_OUTSIDE').sort();
     }
-    return (availableBlocks || []).filter(b => b !== 'ALLBLOCKS');
+    return (availableBlocks || []).filter(b => b !== 'ALLBLOCKS' && b !== 'NO_OUTSIDE');
   }, [isAllAccess, allData, availableBlocks]);
 
   const fetchAllData = useCallback(async () => {
@@ -285,7 +298,7 @@ function SearchPeople({ allowedBlocks }) {
                 {suggestion.name}
                 {suggestion.block && (
                   <span className="ml-2 text-xs rounded-full bg-blue-50 text-blue-700 px-2 py-0.5">
-                    Block {suggestion.block}
+                    {blockPhrase(suggestion.block)}
                   </span>
                 )}
               </li>
@@ -325,7 +338,7 @@ function SearchPeople({ allowedBlocks }) {
             <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)} className="input-neon">
               <option value="">{isAllAccess ? 'All Blocks' : 'Your blocks'}</option>
               {blockOptions.map((block, index) => (
-                <option key={index} value={block}>{block}</option>
+                <option key={index} value={block}>{blockLabel(block)}</option>
               ))}
             </select>
           </div>
@@ -417,13 +430,18 @@ function SearchPeople({ allowedBlocks }) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredData.map((item, index) => (
-                    <tr key={index} className="transition hover:bg-blue-50/50">
-                      <td className="px-5 py-3.5 font-semibold text-slate-900">{item.houseno}</td>
+                    <tr key={index} className={`transition hover:bg-blue-50/50 ${outsideRowClass(item.block)}`}>
+                      <td className="px-5 py-3.5 font-semibold text-slate-900">
+                        <span className="inline-flex items-center">
+                          {outsideMark(item.block)}
+                          {item.houseno}
+                        </span>
+                      </td>
                       <td className="px-5 py-3.5 text-slate-700">{item.name}</td>
                       <td className="px-5 py-3.5 text-slate-600">{item.contact || '—'}</td>
                       <td className="px-5 py-3.5">
                         <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-                          {item.block || '—'}
+                          {blockLabel(item.block) || '—'}
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-slate-600">{item.year || '—'}</td>

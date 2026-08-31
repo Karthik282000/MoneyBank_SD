@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import './Home.css';
 import { API_BASE_URL } from './Constants.jsx';
+import { blockLabel, blockPhrase, isOutsideBlock, outsideRowClass } from './blockAccess.js';
 
 function amountToWords(num) {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
@@ -378,7 +379,7 @@ function Home({ allowedBlocks = [] }) {
                   <div className="flex items-start justify-between gap-2 mb-4">
                     <div className="min-w-0">
                       <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.2em] sm:tracking-[0.25em] text-blue-500 font-semibold">Block</p>
-                      <h3 className="text-xl sm:text-2xl font-bold neon-text leading-tight break-words">{blk.block}</h3>
+                      <h3 className="text-xl sm:text-2xl font-bold neon-text leading-tight break-words">{blockLabel(blk.block)}</h3>
                     </div>
                     <span className="shrink-0 rounded-full bg-blue-50 px-2.5 sm:px-3 py-1 text-[11px] sm:text-xs font-semibold text-blue-700">
                       {pct}%<span className="hidden sm:inline"> collected</span>
@@ -516,13 +517,18 @@ function Home({ allowedBlocks = [] }) {
                 filteredDueList.map((row, idx) => (
                   <div
                     key={row.receipt_no || `${row.houseno}-${idx}`}
-                    className="rounded-xl border border-slate-200 bg-white p-4"
+                    className={`rounded-xl border border-slate-200 bg-white p-4 ${outsideRowClass(row.block)}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
+                        {isOutsideBlock(row.block) && (
+                          <span className="mb-1 inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                            Outside
+                          </span>
+                        )}
                         <p className="font-semibold text-slate-900 break-words">{row.name}</p>
                         <p className="text-sm text-slate-500 mt-0.5">
-                          House {row.houseno} · Block {row.block || '—'}
+                          House {row.houseno} · {blockPhrase(row.block) || '—'}
                         </p>
                       </div>
                       <p className="shrink-0 font-semibold text-blue-600">₹ {row.amount}</p>
@@ -562,10 +568,19 @@ function Home({ allowedBlocks = [] }) {
                     </tr>
                   ) : (
                     filteredDueList.map((row, idx) => (
-                      <tr key={row.receipt_no || `${row.houseno}-${idx}`} className="border-b border-slate-100 transition hover:bg-blue-50/60">
-                        <td className="p-3 font-medium text-slate-900">{row.houseno}</td>
+                      <tr key={row.receipt_no || `${row.houseno}-${idx}`} className={`border-b border-slate-100 transition hover:bg-blue-50/60 ${outsideRowClass(row.block)}`}>
+                        <td className="p-3 font-medium text-slate-900">
+                          <span className="inline-flex items-center">
+                            {isOutsideBlock(row.block) && (
+                              <span className="mr-2 inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Outside
+                              </span>
+                            )}
+                            {row.houseno}
+                          </span>
+                        </td>
                         <td className="p-3">{row.name}</td>
-                        <td className="p-3">{row.block}</td>
+                        <td className="p-3">{blockLabel(row.block)}</td>
                         <td className="p-3 text-slate-600">{row.reference_receipt_no || '—'}</td>
                         <td className="p-3 text-blue-600 font-semibold">₹ {row.amount}</td>
                         <td className="p-3">
@@ -672,9 +687,14 @@ function Home({ allowedBlocks = [] }) {
                 <p className="text-center p-4 text-slate-500">No receipts found</p>
               ) : (
                 filteredReceipts.map((r, index) => (
-                  <div key={index} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div key={index} className={`rounded-xl border border-slate-200 bg-white p-4 ${outsideRowClass(r.block)}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
+                        {isOutsideBlock(r.block) && (
+                          <span className="mb-1 inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                            Outside
+                          </span>
+                        )}
                         <p className="font-semibold text-slate-900 break-words">{r.name}</p>
                         <p className="text-sm text-slate-500 mt-0.5">House {r.houseno}</p>
                       </div>
@@ -720,8 +740,17 @@ function Home({ allowedBlocks = [] }) {
                     </tr>
                   ) : (
                     filteredReceipts.map((r, index) => (
-                      <tr key={index} className="border-b border-slate-100 transition hover:bg-blue-50/60">
-                        <td className="p-3 font-medium text-slate-900">{r.receipt_no}</td>
+                      <tr key={index} className={`border-b border-slate-100 transition hover:bg-blue-50/60 ${outsideRowClass(r.block)}`}>
+                        <td className="p-3 font-medium text-slate-900">
+                          <span className="inline-flex items-center">
+                            {isOutsideBlock(r.block) && (
+                              <span className="mr-2 inline-flex items-center rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Outside
+                              </span>
+                            )}
+                            {r.receipt_no}
+                          </span>
+                        </td>
                         <td className="p-3 text-slate-600">{r.reference_receipt_no || '—'}</td>
                         <td className="p-3">{r.houseno}</td>
                         <td className="p-3">{r.name}</td>
@@ -927,7 +956,7 @@ function Home({ allowedBlocks = [] }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className={`text-[10px] sm:text-[11px] uppercase tracking-[0.2em] sm:tracking-[0.25em] font-semibold ${theme.eyebrow}`}>
-                    Block {statModal.block}
+                    Block {blockLabel(statModal.block)}
                   </p>
                   <h3 className="text-xl sm:text-2xl font-bold mt-1">{statModal.label}</h3>
                   <p className="text-sm mt-1 opacity-90">{statModal.hint}</p>

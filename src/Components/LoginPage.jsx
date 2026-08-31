@@ -2,11 +2,15 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-// import './LoginPage.css';
 import { API_BASE_URL } from './Constants.jsx';
+import {
+  LOGIN_BLOCK_OPTIONS,
+  OUTSIDE_BLOCK,
+  SOCIETY_BLOCKS,
+  blockLabel,
+} from './blockAccess.js';
 
-
-const BLOCK_OPTIONS = ['A', 'B', 'C', 'D', 'ALLBLOCKS'];
+const BLOCK_OPTIONS = LOGIN_BLOCK_OPTIONS;
 
 export default function LoginPage({ onLogin }) {
 
@@ -47,6 +51,18 @@ export default function LoginPage({ onLogin }) {
 
       if (option !== 'ALLBLOCKS' && nextBlocks.includes('ALLBLOCKS')) {
         nextBlocks = nextBlocks.filter(b => b !== 'ALLBLOCKS');
+      }
+
+      const hadSociety = prev.blocks.some(b => SOCIETY_BLOCKS.includes(b) || b === 'ALLBLOCKS');
+      const hasSociety = nextBlocks.some(b => SOCIETY_BLOCKS.includes(b) || b === 'ALLBLOCKS');
+      if (
+        !hadSociety &&
+        hasSociety &&
+        option !== OUTSIDE_BLOCK &&
+        !nextBlocks.includes(OUTSIDE_BLOCK) &&
+        !nextBlocks.includes('ALLBLOCKS')
+      ) {
+        nextBlocks = [...nextBlocks, OUTSIDE_BLOCK];
       }
 
       return { ...prev, blocks: nextBlocks };
@@ -334,6 +350,9 @@ export default function LoginPage({ onLogin }) {
 
               <div>
                 <p className="text-sm text-slate-600 mb-2">Allowed Blocks</p>
+                <p className="text-xs text-slate-400 mb-2">
+                  Outside is for donors who live outside the society. It is added automatically with A–D and can be turned off.
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {BLOCK_OPTIONS.map(opt => (
                     <button
@@ -346,7 +365,7 @@ export default function LoginPage({ onLogin }) {
                           : 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
-                      {opt}
+                      {blockLabel(opt)}
                     </button>
                   ))}
                 </div>
@@ -402,6 +421,9 @@ export default function LoginPage({ onLogin }) {
                 <p className="text-sm text-slate-600 mb-2">
                   Allowed Blocks <span className="text-slate-400">(existing access is pre-selected)</span>
                 </p>
+                <p className="text-xs text-slate-400 mb-2">
+                  Outside is for donors who live outside the society. It is added automatically with A–D and can be turned off.
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {BLOCK_OPTIONS.map(opt => (
                     <button
@@ -414,7 +436,7 @@ export default function LoginPage({ onLogin }) {
                           : 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
-                      {opt}
+                      {blockLabel(opt)}
                     </button>
                   ))}
                 </div>
