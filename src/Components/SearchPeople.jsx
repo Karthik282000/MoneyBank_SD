@@ -34,6 +34,21 @@ function statusTone(item) {
   return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
 }
 
+const KNOWN_PAYMENT_MODES = ['Cash', 'QR', 'Cheque', 'DD', 'NEFT', 'UTR'];
+
+function splitModes(value) {
+  return String(value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function matchesPaymentMode(row, selected) {
+  if (!selected) return true;
+  const want = selected.toLowerCase();
+  return splitModes(row.modeofpayment).some((m) => m.toLowerCase() === want);
+}
+
 function outsideMark(block) {
   if (!isOutsideBlock(block)) return null;
   return (
@@ -51,6 +66,7 @@ function SearchPeople({ allowedBlocks }) {
   const [selectedBlock, setSelectedBlock] = useState('');
   const [receiptStatus, setReceiptStatus] = useState('');
   const [transactionFilter, setTransactionFilter] = useState('');
+  const [paymentModeFilter, setPaymentModeFilter] = useState('');
   const [allData, setAllData] = useState([]);
   const [filteredData, setFilteredData] = useState(null);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -92,6 +108,18 @@ function SearchPeople({ allowedBlocks }) {
     }
     return (availableBlocks || []).filter(b => b !== 'ALLBLOCKS' && b !== 'NO_OUTSIDE');
   }, [isAllAccess, allData, availableBlocks]);
+
+  const paymentModeOptions = useMemo(() => {
+    const fromData = new Set();
+    allData.forEach((d) => {
+      splitModes(d.modeofpayment).forEach((m) => fromData.add(m));
+    });
+    const extras = [...fromData].filter(
+      (m) => !KNOWN_PAYMENT_MODES.some((k) => k.toLowerCase() === m.toLowerCase())
+    );
+    extras.sort((a, b) => a.localeCompare(b));
+    return [...KNOWN_PAYMENT_MODES, ...extras];
+  }, [allData]);
 
   const fetchAllData = useCallback(async () => {
     try {
@@ -186,6 +214,9 @@ function SearchPeople({ allowedBlocks }) {
           : rs === receiptStatus;
       });
     }
+    if (paymentModeFilter) {
+      data = data.filter(d => matchesPaymentMode(d, paymentModeFilter));
+    }
 
     const results = data.map(item => ({
       houseno: item.houseno,
@@ -197,15 +228,19 @@ function SearchPeople({ allowedBlocks }) {
       amountPaidLastYear: item.amountpaidlastyear || 0,
       receiptStatus: item.receiptstatus || '',
       referenceReceiptNo: item.reference_receipt_no || '',
+      paymentMode: item.modeofpayment || '',
+      transactionReference: item.transaction_reference || '',
+      bankName: item.bank_name || '',
+      transactionDated: item.transaction_dated || '',
       has_transaction: hasTxn(item),
     }));
 
     setFilteredData(results);
-    setTotalAmount(
-      results
-        .filter(r => (r.receiptStatus || '').toLowerCase() !== 'due')
-        .reduce((sum, r) => sum + r.totalAmount, 0)
-    );
+    const entriesTotal = results.reduce((sum, r) => sum + r.totalAmount, 0);
+    const collectedTotal = results
+      .filter(r => (r.receiptStatus || '').toLowerCase() !== 'due')
+      .reduce((sum, r) => sum + r.totalAmount, 0);
+    setTotalAmount(paymentModeFilter ? entriesTotal : collectedTotal);
     setShowDropdown(false);
     setLoading(false);
 
@@ -220,6 +255,7 @@ function SearchPeople({ allowedBlocks }) {
     setSelectedBlock('');
     setReceiptStatus('');
     setTransactionFilter('');
+    setPaymentModeFilter('');
     setFilteredData(null);
     setTotalAmount(0);
     setFilteredSuggestions([]);
@@ -306,7 +342,7 @@ function SearchPeople({ allowedBlocks }) {
           </ul>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
           <div>
             <label className="block text-slate-700 font-semibold mb-2">Transaction</label>
             <select
@@ -339,6 +375,20 @@ function SearchPeople({ allowedBlocks }) {
               <option value="">{isAllAccess ? 'All Blocks' : 'Your blocks'}</option>
               {blockOptions.map((block, index) => (
                 <option key={index} value={block}>{blockLabel(block)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-slate-700 font-semibold mb-2">Mode of Payment</label>
+            <select
+              value={paymentModeFilter}
+              onChange={e => setPaymentModeFilter(e.target.value)}
+              className="input-neon"
+            >
+              <option value="">All modes</option>
+              {paymentModeOptions.map((mode) => (
+                <option key={mode} value={mode}>{mode}</option>
               ))}
             </select>
           </div>
@@ -385,12 +435,18 @@ function SearchPeople({ allowedBlocks }) {
               <p className="mt-1 text-2xl font-bold text-slate-800">{filteredData.length}</p>
             </div>
             <div className="glass-card px-5 py-4">
-              <p className="text-[11px] uppercase tracking-widest text-slate-400">Transaction done</p>
+              <p className="text-[11px] uppercase tracking-widest text-slate-400">
+                {paymentModeFilter ? `${paymentModeFilter} entries` : 'Transaction done'}
+              </p>
               <p className="mt-1 text-2xl font-bold text-emerald-600">{paidCount}</p>
             </div>
             <div className="glass-card px-5 py-4">
-              <p className="text-[11px] uppercase tracking-widest text-slate-400">No transaction</p>
-              <p className="mt-1 text-2xl font-bold text-slate-600">{unpaidCount}</p>
+              <p className="text-[11px] uppercase tracking-widest text-slate-400">
+                {paymentModeFilter ? `Total ${paymentModeFilter}` : 'No transaction'}
+              </p>
+              <p className={`mt-1 text-2xl font-bold ${paymentModeFilter ? 'text-blue-700' : 'text-slate-600'}`}>
+                {paymentModeFilter ? `₹${totalAmount.toFixed(2)}` : unpaidCount}
+              </p>
             </div>
           </div>
 
@@ -398,7 +454,7 @@ function SearchPeople({ allowedBlocks }) {
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
               <div>
                 <h3 className="text-lg font-semibold text-slate-800">
-                  Search results{selectedBlock ? ` · Block ${selectedBlock}` : ''}
+                  Search results{selectedBlock ? ` · ${blockPhrase(selectedBlock)}` : ''}{paymentModeFilter ? ` · ${paymentModeFilter}` : ''}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {transactionFilter === 'not_done'
@@ -409,7 +465,9 @@ function SearchPeople({ allowedBlocks }) {
                 </p>
               </div>
               <div className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-semibold text-blue-700">
-                Total collected ₹{totalAmount.toFixed(2)}
+                {paymentModeFilter
+                  ? `Total ${paymentModeFilter} ₹${totalAmount.toFixed(2)}`
+                  : `Total collected ₹${totalAmount.toFixed(2)}`}
               </div>
             </div>
 
@@ -425,6 +483,8 @@ function SearchPeople({ allowedBlocks }) {
                     {/* <th className="px-5 py-3 font-semibold">Ref. Receipt</th> */}
                     <th className="px-5 py-3 font-semibold">Amount Paid Last year</th>
                     <th className="px-5 py-3 font-semibold">Amount Paid This year</th>
+                    <th className="px-5 py-3 font-semibold">Payment Mode</th>
+                    <th className="px-5 py-3 font-semibold">Txn details</th>
                     <th className="px-5 py-3 font-semibold">Status</th>
                   </tr>
                 </thead>
@@ -448,6 +508,39 @@ function SearchPeople({ allowedBlocks }) {
                       {/* <td className="px-5 py-3.5 text-slate-600">{item.referenceReceiptNo || '—'}</td> */}
                       <td className="px-5 py-3.5 text-slate-600">₹{Number(item.amountPaidLastYear || 0).toFixed(2)}</td>
                       <td className="px-5 py-3.5 font-semibold text-blue-700">₹{item.totalAmount.toFixed(2)}</td>
+                      <td className="px-5 py-3.5">
+                        {splitModes(item.paymentMode).length === 0 ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {splitModes(item.paymentMode).map((mode) => (
+                              <span
+                                key={mode}
+                                className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-100"
+                              >
+                                {mode}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-600">
+                        {item.transactionReference || item.bankName || item.transactionDated ? (
+                          <div className="space-y-0.5 text-xs">
+                            {item.transactionReference ? (
+                              <p className="break-all">Ref. {item.transactionReference}</p>
+                            ) : null}
+                            {item.bankName ? (
+                              <p className="break-words">{item.bankName}</p>
+                            ) : null}
+                            {item.transactionDated ? (
+                              <p>{new Date(item.transactionDated).toLocaleDateString()}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ${statusTone(item)}`}>
                           {statusLabel(item)}

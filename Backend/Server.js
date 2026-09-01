@@ -1381,7 +1381,11 @@ app.post('/api/search-houses', async (req, res) => {
         NULL AS yearofpayment,
         NULL AS yearofsubscription,
         NULL::text AS receiptstatus,
-        NULL::text AS reference_receipt_no
+        NULL::text AS reference_receipt_no,
+        NULL::text AS modeofpayment,
+        NULL::text AS transaction_reference,
+        NULL::text AS bank_name,
+        NULL::date AS transaction_dated
       FROM CollectionDetails c
       WHERE c.state = 'active'
         AND NOT EXISTS (
@@ -1403,20 +1407,25 @@ app.post('/api/search-houses', async (req, res) => {
         c.amountpaidlastyear,
         c.receiptstatus AS collection_receiptstatus,
         TRUE AS has_transaction,
-        COALESCE(SUM(t.subscriptionamount), 0) AS total_amount,
-        MAX(t.yearofpayment) AS yearofpayment,
-        MAX(s.yearofsubscription) AS yearofsubscription,
-        'collected' AS receiptstatus,
-        STRING_AGG(DISTINCT NULLIF(TRIM(t.reference_receipt_no), ''), ', ') AS reference_receipt_no
+        t.subscriptionamount AS total_amount,
+        t.yearofpayment,
+        s.yearofsubscription,
+        t.receiptstatus,
+        t.reference_receipt_no,
+        t.modeofpayment,
+        COALESCE(
+          NULLIF(TRIM(t.transaction_reference), ''),
+          NULLIF(TRIM(t.utrnumber), ''),
+          NULLIF(TRIM(t.referencenumber), '')
+        ) AS transaction_reference,
+        t.bank_name,
+        t.transaction_dated
       FROM CollectionDetails c
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
       WHERE c.state = 'active'
         AND LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')
         ${blockSql}
-      GROUP BY
-        c.houseno, c.name, c.contact, c.email, c.block,
-        c.amountpaidlastyear, c.receiptstatus
 
       UNION ALL
 
@@ -1433,7 +1442,15 @@ app.post('/api/search-houses', async (req, res) => {
         t.yearofpayment,
         s.yearofsubscription,
         t.receiptstatus,
-        t.reference_receipt_no
+        t.reference_receipt_no,
+        t.modeofpayment,
+        COALESCE(
+          NULLIF(TRIM(t.transaction_reference), ''),
+          NULLIF(TRIM(t.utrnumber), ''),
+          NULLIF(TRIM(t.referencenumber), '')
+        ) AS transaction_reference,
+        t.bank_name,
+        t.transaction_dated
       FROM CollectionDetails c
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
