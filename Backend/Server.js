@@ -20,6 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Put your Durga Devi image at ./assets/durga-bg.png (or .jpg) relative to server.js
 const DURGA_BG_PATH = path.join(__dirname, 'assets', 'DurgaMAAIMAGE.jpg');
 const RECEIPT_LOGO_PATH = path.join(__dirname, 'assets', 'Logo.jpeg');
+const GURUS_KITCHEN_LOGO_PATH = path.join(__dirname, 'assets', 'GurusKitchen.png');
 
 let DURGA_BG_DATA_URI = '';
 try {
@@ -39,6 +40,15 @@ try {
   console.log('✅ Receipt logo loaded');
 } catch (err) {
   console.warn('⚠️ Receipt logo not found — receipts will render without it:', err.message);
+}
+
+let GURUS_KITCHEN_DATA_URI = '';
+try {
+  const kitchenBuffer = fs.readFileSync(GURUS_KITCHEN_LOGO_PATH);
+  GURUS_KITCHEN_DATA_URI = `data:image/png;base64,${kitchenBuffer.toString('base64')}`;
+  console.log('✅ Guru\'s Kitchen logo loaded for receipt page 2');
+} catch (err) {
+  console.warn('⚠️ Guru\'s Kitchen logo not found — page 2 will render without it:', err.message);
 }
 
 const { Pool } = pkg;
@@ -585,14 +595,100 @@ function escapeXml(value) {
     .replace(/'/g, '&apos;');
 }
 
+function ornateVerticalDivider(x, y1, y2, blue, gold) {
+  const mid = (y1 + y2) / 2;
+  const diamond = (cy, scale) => {
+    const s = 8 * scale;
+    return `<polygon points="${x},${cy - s} ${x + s},${cy} ${x},${cy + s} ${x - s},${cy}" fill="none" stroke="${gold}" stroke-width="1.2"/>`;
+  };
+  return `
+    <line x1="${x}" y1="${y1}" x2="${x}" y2="${mid - 30}" stroke="${blue}" stroke-width="1.35"/>
+    ${diamond(mid - 16, 1)}
+    <circle cx="${x}" cy="${mid}" r="2.2" fill="${gold}"/>
+    ${diamond(mid + 16, 1)}
+    <line x1="${x}" y1="${mid + 30}" x2="${x}" y2="${y2}" stroke="${blue}" stroke-width="1.35"/>
+  `;
+}
+
+function kitchenBrandCard({ x, y, w, h, blue, dark, gold, logoUri }) {
+  const cx = x + w / 2;
+  const logoSize = 120;
+  const logoX = cx - logoSize / 2;
+  const logoY = y + 24;
+  const logoBlock = logoUri ? `
+    <rect x="${logoX - 4}" y="${logoY - 4}" width="${logoSize + 8}" height="${logoSize + 8}" rx="12" fill="#fffaf2" stroke="${blue}" stroke-width="1.5"/>
+    <rect x="${logoX - 1.5}" y="${logoY - 1.5}" width="${logoSize + 3}" height="${logoSize + 3}" rx="10.5" fill="none" stroke="${gold}" stroke-width="0.85"/>
+    <image href="${logoUri}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}"
+           preserveAspectRatio="xMidYMid slice" clip-path="url(#gkLogoRound)"/>
+  ` : '';
+  const textY = logoUri ? logoY + logoSize + 34 : y + 72;
+  return `
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="#ffffff" stroke="${blue}" stroke-width="1.7"/>
+    <rect x="${x + 5}" y="${y + 5}" width="${w - 10}" height="${h - 10}" rx="8" fill="none" stroke="${gold}" stroke-width="0.8"/>
+    ${logoBlock}
+    <text x="${cx}" y="${textY}" font-size="20" fill="${blue}" font-weight="bold" text-anchor="middle">Guru&apos;s Kitchen</text>
+    <text x="${cx}" y="${textY + 24}" font-size="13" fill="${dark}" font-style="italic" text-anchor="middle">By Priyanka</text>
+    <line x1="${x + 26}" y1="${textY + 38}" x2="${x + w - 26}" y2="${textY + 38}" stroke="${gold}" stroke-width="1"/>
+    <text x="${cx}" y="${textY + 64}" font-size="11.5" fill="${dark}" font-weight="bold" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif">197, JODHPUR GARDENS</text>
+    <text x="${cx}" y="${textY + 82}" font-size="11.5" fill="${dark}" font-weight="bold" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif">GR. FLOOR, KOLKATA-700 045</text>
+    <text x="${cx}" y="${textY + 110}" font-size="12" fill="${blue}" font-weight="bold" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif">Mobile : 90733 93229</text>
+  `;
+}
+
+function buildKitchenPartnerPage({ width, height, blue, dark, gold }) {
+  const leftCx = 168;
+  const cardY = 142;
+  const cardH = 360;
+  const cardW = 214;
+  const watermark = DURGA_BG_DATA_URI ? `
+    <image href="${DURGA_BG_DATA_URI}" x="16" y="16" width="${width - 32}" height="${height - 32}"
+           opacity="0.07" preserveAspectRatio="xMidYMid slice" clip-path="url(#page2CardClip)"/>
+  ` : '';
+  return `
+    <defs>
+      <clipPath id="page2CardClip">
+        <rect x="16" y="16" width="${width - 32}" height="${height - 32}" rx="8"/>
+      </clipPath>
+    </defs>
+    <rect x="0" y="0" width="${width}" height="${height}" fill="#fffaf2"/>
+    <rect x="16" y="16" width="${width - 32}" height="${height - 32}" fill="#fffaf2" stroke="${blue}" stroke-width="2" stroke-dasharray="8 6" rx="8"/>
+    <rect x="22" y="22" width="${width - 44}" height="${height - 44}" fill="none" stroke="${gold}" stroke-width="0.85" rx="6"/>
+    ${watermark}
+
+    <text x="${width / 2}" y="56" font-size="11" fill="${blue}" font-weight="bold" text-anchor="middle" letter-spacing="3.2">WITH COMPLIMENTS</text>
+    <text x="${width / 2}" y="88" font-size="24" fill="${blue}" font-weight="bold" text-anchor="middle">Sarbojanin Durgotsab, 2026</text>
+    <line x1="40" y1="106" x2="${width - 40}" y2="106" stroke="${blue}" stroke-width="1.5"/>
+
+    <text x="${leftCx}" y="250" font-size="15.5" fill="${blue}" text-anchor="middle" font-family="Palatino Linotype, Palatino, Book Antiqua, serif">Enjoy the convenience of</text>
+    <text x="${leftCx}" y="280" font-size="22" fill="${dark}" font-weight="bold" text-anchor="middle" font-family="Palatino Linotype, Palatino, Book Antiqua, serif" letter-spacing="0.4">homemade food</text>
+    <text x="${leftCx}" y="308" font-size="15.5" fill="${blue}" text-anchor="middle" font-family="Palatino Linotype, Palatino, Book Antiqua, serif">without the hassle of cooking!</text>
+    <line x1="${leftCx - 48}" y1="326" x2="${leftCx + 48}" y2="326" stroke="${gold}" stroke-width="1"/>
+    <text x="${leftCx}" y="354" font-size="13.5" fill="${dark}" text-anchor="middle" font-family="Candara, Calibri, Segoe UI, sans-serif">Our thalis and a la carte options</text>
+    <text x="${leftCx}" y="376" font-size="13.5" fill="${dark}" text-anchor="middle" font-family="Candara, Calibri, Segoe UI, sans-serif">are crafted with love and care</text>
+    <text x="${leftCx}" y="398" font-size="13.5" fill="${dark}" text-anchor="middle" font-family="Candara, Calibri, Segoe UI, sans-serif">to bring you a truly satisfying</text>
+    <text x="${leftCx}" y="420" font-size="13.5" fill="${dark}" text-anchor="middle" font-family="Candara, Calibri, Segoe UI, sans-serif">meal experience.</text>
+
+    ${ornateVerticalDivider(318, 140, 552, blue, gold)}
+
+    ${kitchenBrandCard({ x: 344, y: cardY, w: cardW, h: cardH, blue, dark, gold, logoUri: GURUS_KITCHEN_DATA_URI })}
+    ${kitchenBrandCard({ x: 574, y: cardY, w: cardW, h: cardH, blue, dark, gold, logoUri: GURUS_KITCHEN_DATA_URI })}
+
+    <line x1="40" y1="582" x2="${width - 40}" y2="582" stroke="${blue}" stroke-width="1"/>
+    <text x="${width / 2}" y="608" font-size="11" fill="${blue}" font-style="italic" text-anchor="middle">Proud hospitality partner of Sarbojanin Durgotsab Committee, Lake Gardens</text>
+  `;
+}
+
 // Build a self-contained SVG image of the receipt.
 // SVG is a real image format that renders in <img> tags and opens in any browser,
 // and it needs NO headless browser — so it works identically on local dev and in production.
 function buildReceiptSvg(receiptData = {}, config = {}) {
   const width = 820;
-  const height = 640;
+  const pageH = 640;
+  const pageGap = 28;
+  const height = pageH * 2 + pageGap;
   const blue = '#0033cc';
   const dark = '#222222';
+  const gold = '#c5a059';
 
   const refLine = receiptData.chequeOrDDNo
     ? `by ${receiptData.paymentMode || ''}  |  Ref/UTR No: ${receiptData.chequeOrDDNo}`
@@ -617,12 +713,9 @@ function buildReceiptSvg(receiptData = {}, config = {}) {
   <text x="${width / 2}" y="95" font-size="22" fill="#ff0000" font-weight="bold" text-anchor="middle" letter-spacing="4">DUE</text>
   ` : '';
 
-      const bgImageSection = DURGA_BG_DATA_URI ? `
-  <clipPath id="cardClip">
-    <rect x="16" y="16" width="${width - 32}" height="${height - 32}" rx="8"/>
-  </clipPath>
-  <image href="${DURGA_BG_DATA_URI}" x="16" y="16" width="${width - 32}" height="${height - 32}"
-         opacity="0.10" preserveAspectRatio="xMidYMid slice" clip-path="url(#cardClip)"/>
+  const bgImageSection = DURGA_BG_DATA_URI ? `
+  <image href="${DURGA_BG_DATA_URI}" x="16" y="16" width="${width - 32}" height="${pageH - 32}"
+         opacity="0.10" preserveAspectRatio="xMidYMid slice" clip-path="url(#page1CardClip)"/>
   ` : '';
 
   const logoSize = 88;
@@ -645,40 +738,56 @@ function buildReceiptSvg(receiptData = {}, config = {}) {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Georgia, 'Times New Roman', serif">
-  <rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>
-  <rect x="16" y="16" width="${width - 32}" height="${height - 32}" fill="#ffffff" stroke="${blue}" stroke-width="2" stroke-dasharray="8 6" rx="8"/>
+  <defs>
+    <clipPath id="page1CardClip">
+      <rect x="16" y="16" width="${width - 32}" height="${pageH - 32}" rx="8"/>
+    </clipPath>
+    <clipPath id="gkLogoRound" clipPathUnits="objectBoundingBox">
+      <rect x="0" y="0" width="1" height="1" rx="0.08" ry="0.08"/>
+    </clipPath>
+  </defs>
+  <rect x="0" y="0" width="${width}" height="${height}" fill="#e8eef8"/>
+
+  <g id="receipt-page-1">
+    <rect x="0" y="0" width="${width}" height="${pageH}" fill="#ffffff"/>
+    <rect x="16" y="16" width="${width - 32}" height="${pageH - 32}" fill="#ffffff" stroke="${blue}" stroke-width="2" stroke-dasharray="8 6" rx="8"/>
 ${bgImageSection}
 ${logoSection}
 ${dueSection}
-  <text x="40" y="60" font-size="18" fill="${blue}" font-weight="bold">No. <tspan fill="${dark}">${escapeXml(receiptData.receiptNo)}</tspan></text>
-  <text x="${width - 40}" y="60" font-size="18" fill="${blue}" font-weight="bold" text-anchor="end">Date: <tspan fill="${dark}">${escapeXml(receiptData.date)}</tspan></text>
+    <text x="40" y="60" font-size="18" fill="${blue}" font-weight="bold">No. <tspan fill="${dark}">${escapeXml(receiptData.receiptNo)}</tspan></text>
+    <text x="${width - 40}" y="60" font-size="18" fill="${blue}" font-weight="bold" text-anchor="end">Date: <tspan fill="${dark}">${escapeXml(receiptData.date)}</tspan></text>
 
-  <text x="${width / 2}" y="102" font-size="30" fill="${blue}" font-weight="bold" text-anchor="middle">Sarbojanin Durgotsab, 2026</text>
-  <text x="${width / 2}" y="128" font-size="16" fill="${dark}" font-style="italic" text-anchor="middle">Organised by :</text>
-  <text x="${width / 2}" y="152" font-size="16" fill="${blue}" font-weight="bold" text-anchor="middle">SARBOJANIN DURGOTSAB COMMITTEE, LAKE GARDENS</text>
-  <text x="${width / 2}" y="174" font-size="16" fill="${blue}" font-weight="bold" text-anchor="middle">Lake Gardens People's Association</text>
-  <text x="${width / 2}" y="196" font-size="14" fill="${blue}" text-anchor="middle">At Bangur Park, B-202 Lake Gardens, Kolkata - 700 045</text>
+    <text x="${width / 2}" y="102" font-size="30" fill="${blue}" font-weight="bold" text-anchor="middle">Sarbojanin Durgotsab, 2026</text>
+    <text x="${width / 2}" y="128" font-size="16" fill="${dark}" font-style="italic" text-anchor="middle">Organised by :</text>
+    <text x="${width / 2}" y="152" font-size="16" fill="${blue}" font-weight="bold" text-anchor="middle">SARBOJANIN DURGOTSAB COMMITTEE, LAKE GARDENS</text>
+    <text x="${width / 2}" y="174" font-size="16" fill="${blue}" font-weight="bold" text-anchor="middle">Lake Gardens People's Association</text>
+    <text x="${width / 2}" y="196" font-size="14" fill="${blue}" text-anchor="middle">At Bangur Park, B-202 Lake Gardens, Kolkata - 700 045</text>
 
-  <line x1="40" y1="214" x2="${width - 40}" y2="214" stroke="${blue}" stroke-width="1.5"/>
+    <line x1="40" y1="214" x2="${width - 40}" y2="214" stroke="${blue}" stroke-width="1.5"/>
 
-  <text x="40" y="250" font-size="17" fill="${blue}" font-style="italic">Received with thanks from <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.name)}</tspan></text>
-  <text x="40" y="282" font-size="17" fill="${blue}" font-style="italic">of <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.address)}</tspan></text>
-  <text x="40" y="314" font-size="17" fill="${blue}" font-style="italic">The sum of Rupees <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.amountWords)} only</tspan></text>
-  <text x="40" y="346" font-size="17" fill="${blue}">${escapeXml(refLine)}</text>
-  <text x="40" y="378" font-size="15" fill="${blue}" font-style="italic">as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.</text>
+    <text x="40" y="250" font-size="17" fill="${blue}" font-style="italic">Received with thanks from <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.name)}</tspan></text>
+    <text x="40" y="282" font-size="17" fill="${blue}" font-style="italic">of <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.address)}</tspan></text>
+    <text x="40" y="314" font-size="17" fill="${blue}" font-style="italic">The sum of Rupees <tspan fill="${dark}" font-weight="bold" font-style="normal">${escapeXml(receiptData.amountWords)} only</tspan></text>
+    <text x="40" y="346" font-size="17" fill="${blue}">${escapeXml(refLine)}</text>
+    <text x="40" y="378" font-size="15" fill="${blue}" font-style="italic">as subscription/donation for Sri Sri Durga Puja, Laxmi Puja and Kali Puja 2026.</text>
 
-  <rect x="40" y="398" width="150" height="46" fill="#ffffff" stroke="${blue}" stroke-width="2" rx="7"/>
-  <text x="115" y="429" font-size="22" fill="${dark}" font-weight="bold" text-anchor="middle">&#8377; ${escapeXml(receiptData.amountFigure)}</text>
+    <rect x="40" y="398" width="150" height="46" fill="#ffffff" stroke="${blue}" stroke-width="2" rx="7"/>
+    <text x="115" y="429" font-size="22" fill="${dark}" font-weight="bold" text-anchor="middle">&#8377; ${escapeXml(receiptData.amountFigure)}</text>
 ${bhogSection}
-  <text x="130" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.president )}</text>
-  <text x="130" y="580" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">President</text>
+    <text x="130" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.president )}</text>
+    <text x="130" y="580" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">President</text>
 
-  <text x="${width / 2}" y="548" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary1 )}</text>
-  <text x="${width / 2}" y="568" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary2 )}</text>
-  <text x="${width / 2}" y="588" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">Jt. General Secretaries</text>
+    <text x="${width / 2}" y="548" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary1 )}</text>
+    <text x="${width / 2}" y="568" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.secretary2 )}</text>
+    <text x="${width / 2}" y="588" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">Jt. General Secretaries</text>
 
-  <text x="${width - 130}" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.treasurer)}</text>
-  <text x="${width - 130}" y="580" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">Treasurer</text>
+    <text x="${width - 130}" y="560" font-size="15" fill="${dark}" font-weight="bold" text-anchor="middle">${escapeXml(config.treasurer)}</text>
+    <text x="${width - 130}" y="580" font-size="13" fill="${blue}" font-style="italic" text-anchor="middle">Treasurer</text>
+  </g>
+
+  <g id="receipt-page-2" transform="translate(0, ${pageH + pageGap})">
+    ${buildKitchenPartnerPage({ width, height: pageH, blue, dark, gold })}
+  </g>
 </svg>`;
 }
 
@@ -2057,6 +2166,7 @@ app.post('/api/complete-due', async (req, res) => {
       secretary2: existing.secretary2,
       treasurer: existing.treasurer,
     };
+    
     const config = (existing.president || existing.treasurer)
       ? snapshotConfig
       : await getReceiptConfig();

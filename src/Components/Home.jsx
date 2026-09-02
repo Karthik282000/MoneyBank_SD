@@ -780,7 +780,7 @@ function Home({ allowedBlocks = [] }) {
       {/* MODAL */}
       {showReceiptModal && selectedReceipt && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white w-full max-w-xl rounded-2xl shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 overflow-y-auto max-h-[90vh] animate-fadeIn">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 overflow-y-auto max-h-[90vh] animate-fadeIn">
 
                   {/* Live rebuilt SVG (Mahastmi Bhog + DUE) — falls back to stored image / HTML */}
                   {liveReceiptSvgUrl ? (
