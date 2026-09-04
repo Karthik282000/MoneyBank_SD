@@ -26,6 +26,45 @@ function amountToWords(num) {
   return toWords(num).toUpperCase();
 }
 
+function normalizeContactDigits(value) {
+  let digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length >= 12) digits = digits.slice(-10);
+  if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
+  return digits;
+}
+
+function buildWhatsAppMessage({ name, receiptNo, houseNo, amountPaid, yearOfPayment, paymentMode, receiptLink }) {
+  const lines = [
+    '🧾 Sarbojanin Durgotsab Receipt',
+    '',
+    `Hello ${name || ''},`,
+    '',
+    'Your transaction has been completed successfully.',
+    '',
+    `📌 Receipt No: ${receiptNo || ''}`,
+    `🏠 House No: ${houseNo || ''}`,
+    `💰 Amount Paid: ₹${amountPaid || ''}`,
+    `📅 Financial Year: ${yearOfPayment || ''}`,
+    `💳 Payment Mode: ${paymentMode || ''}`,
+  ];
+
+  if (receiptLink) {
+    lines.push('', '🔗 View / download your receipt here:', receiptLink);
+  }
+
+  lines.push('', 'Thank you for your contribution 🙏', "Lake Gardens People's Association");
+  return lines.join('\n');
+}
+
+function buildWhatsAppUrl({ contact, name, receiptNo, houseNo, amountPaid, yearOfPayment, paymentMode, receiptLink }) {
+  const digits = String(contact || '').replace(/\D/g, '');
+  if (!digits) return '';
+
+  const phone = `91${digits}`;
+  const message = buildWhatsAppMessage({ name, receiptNo, houseNo, amountPaid, yearOfPayment, paymentMode, receiptLink });
+  return `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+}
+
 // Premium gradient stop pairs used to paint the donut slices (presentation only)
 const GRADIENTS = [
   ['#2563eb', '#60a5fa'],
@@ -230,6 +269,14 @@ function Home({ allowedBlocks = [] }) {
 
   const [showDue, setShowDue] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
+  const [editReceipt, setEditReceipt] = useState(null);
+  const [editForm, setEditForm] = useState({
+    referenceReceiptNo: '',
+    contact: '',
+    email: '',
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   // Open a receipt using a freshly rebuilt SVG from the server (includes
   // Mahastmi Bhog line + DUE stamp), instead of a possibly stale stored image.
@@ -242,6 +289,68 @@ function Home({ allowedBlocks = [] }) {
       setLiveReceiptSvgUrl(url);
     } catch (err) {
       console.error('Failed to load live receipt SVG', err);
+    }
+  };
+
+  const openEditReceipt = (receipt) => {
+    setEditError('');
+    setEditReceipt(receipt);
+    setEditForm({
+      referenceReceiptNo: receipt.reference_receipt_no || '',
+      contact: receipt.contact || '',
+      email: receipt.email || '',
+    });
+  };
+
+  const closeEditReceipt = () => {
+    if (editSaving) return;
+    setEditReceipt(null);
+    setEditError('');
+  };
+
+  const submitEditReceipt = async (e) => {
+    e.preventDefault();
+    if (!editReceipt) return;
+    setEditSaving(true);
+    setEditError('');
+    const originalContact = normalizeContactDigits(editReceipt.contact);
+    const nextContact = normalizeContactDigits(editForm.contact);
+    const contactChanged = originalContact !== nextContact && nextContact.length > 0;
+    const waTab = contactChanged ? window.open('', '_blank') : null;
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/receipts/update-details`, {
+        receiptNo: editReceipt.receipt_no,
+        referenceReceiptNo: editForm.referenceReceiptNo,
+        contact: editForm.contact,
+        email: editForm.email,
+      });
+      const saved = res.data || {};
+      await fetchReceipts();
+      if (contactChanged) {
+        const whatsappURL = buildWhatsAppUrl({
+          contact: editForm.contact,
+          name: saved.name || editReceipt.name,
+          receiptNo: saved.receiptNo || editReceipt.receipt_no,
+          houseNo: saved.houseno || editReceipt.houseno,
+          amountPaid: saved.amount ?? editReceipt.amount,
+          yearOfPayment: saved.yearOfPayment || editReceipt.year_of_payment,
+          paymentMode: saved.paymentMode || editReceipt.payment_mode,
+          receiptLink: saved.receiptImageUrl || saved.receiptViewUrl || editReceipt.receipt_image_url || editReceipt.receipt_view_url,
+        });
+        if (whatsappURL && waTab) {
+          waTab.location.href = whatsappURL;
+        } else if (whatsappURL) {
+          window.open(whatsappURL, '_blank');
+        } else if (waTab) {
+          waTab.close();
+        }
+      }
+      setEditReceipt(null);
+    } catch (err) {
+      if (waTab) waTab.close();
+      setEditError(err.response?.data?.error || 'Failed to update receipt details');
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -349,7 +458,7 @@ function Home({ allowedBlocks = [] }) {
 
       {/* HEADER */}
       <div className="relative mb-6 sm:mb-10 text-center px-1">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab</p>
+        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab Committee LakeGardens</p>
         <h2 className="mt-2 text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight neon-text">
           Dashboard Overview
         </h2>
@@ -705,12 +814,22 @@ function Home({ allowedBlocks = [] }) {
                       <p className="break-all">Ref. {r.reference_receipt_no || '—'}</p>
                       <p>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</p>
                     </div>
-                    <button
-                      className="btn-neon w-full mt-3 !py-2 text-sm"
-                      onClick={() => openReceipt(r)}
-                    >
-                      View
-                    </button>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        className="btn-neon w-full !py-2 text-sm"
+                        onClick={() => openReceipt(r)}
+                      >
+                        View
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost w-full !py-2 text-sm"
+                        onClick={() => openEditReceipt(r)}
+                      >
+                        Edit
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -759,12 +878,22 @@ function Home({ allowedBlocks = [] }) {
                           {new Date(r.created_at).toLocaleDateString()}
                         </td>
                         <td className="p-3">
-                          <button
-                            className="btn-neon !px-4 !py-1.5 text-xs"
-                            onClick={() => openReceipt(r)}
-                          >
-                            View
-                          </button>
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="btn-neon !px-4 !py-1.5 text-xs"
+                              onClick={() => openReceipt(r)}
+                            >
+                              View
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost !px-4 !py-1.5 text-xs"
+                              onClick={() => openEditReceipt(r)}
+                            >
+                              Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -934,6 +1063,78 @@ function Home({ allowedBlocks = [] }) {
                     </button>
                   </div>
 
+          </div>
+        </div>
+      )}
+
+      {editReceipt && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4">
+          <div className="w-full max-w-lg max-h-[92vh] overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 animate-fadeIn flex flex-col">
+            <div className="px-4 sm:px-6 pt-5 pb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+              <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-blue-100">Edit receipt details</p>
+              <h3 className="text-xl font-bold mt-1 break-words">{editReceipt.name}</h3>
+              <p className="text-sm text-blue-100 mt-1 break-all">
+                Receipt {editReceipt.receipt_no} · House {editReceipt.houseno}
+              </p>
+            </div>
+            <form onSubmit={submitEditReceipt} className="p-4 sm:p-6 space-y-4 overflow-auto">
+              <p className="text-xs text-slate-500">
+                Fill in a value to add or change it. Leave a field blank to keep whatever is already stored.
+              </p>
+              <div className="field">
+                <label className="field-label" htmlFor="edit-ref-receipt">Reference receipt number</label>
+                <input
+                  id="edit-ref-receipt"
+                  type="text"
+                  value={editForm.referenceReceiptNo}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, referenceReceiptNo: e.target.value }))}
+                  placeholder="Physical or system reference no"
+                  className="input-neon"
+                />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="edit-contact">Customer contact</label>
+                <input
+                  id="edit-contact"
+                  type="tel"
+                  value={editForm.contact}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, contact: e.target.value }))}
+                  placeholder="Phone number"
+                  className="input-neon"
+                />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="edit-email">Customer email</label>
+                <input
+                  id="edit-email"
+                  type="text"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="customer@email.com"
+                  className="input-neon"
+                />
+              </div>
+              {editError && (
+                <p className="text-sm text-rose-600">{editError}</p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  className="btn-ghost flex-1"
+                  onClick={closeEditReceipt}
+                  disabled={editSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-neon flex-1"
+                  disabled={editSaving}
+                >
+                  {editSaving ? 'Saving…' : 'Submit'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

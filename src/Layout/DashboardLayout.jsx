@@ -16,7 +16,7 @@ function DashboardLayout({ children, user, onLogout }) {
                 <div className="pointer-events-none absolute -top-16 -left-16 h-48 w-48 rounded-full bg-sky-400/25 blur-3xl" />
 
                 <h2 className="relative text-2xl font-bold mb-10 tracking-tight">
-                    SD<span className="text-sky-300">App</span>
+                   Pujo<span className="text-sky-300">Pe</span>
                 </h2>
 
                 <button onClick={() => navigate('/home')} className={navBtn}>
@@ -32,6 +32,11 @@ function DashboardLayout({ children, user, onLogout }) {
                 <button onClick={() => navigate('/search')} className={navBtn}>
                     <span className="h-1.5 w-1.5 rounded-full bg-sky-300 opacity-0 transition-opacity group-hover:opacity-100" />
                     Search People
+                </button>
+
+                <button onClick={() => navigate('/individual-collection')} className={navBtn}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-sky-300 opacity-0 transition-opacity group-hover:opacity-100" />
+                    Individual Collection
                 </button>
 
                 {user === "admin@sdapp.com" && (
@@ -59,7 +64,7 @@ function DashboardLayout({ children, user, onLogout }) {
 
                 {/* LEFT TITLE */}
                 <div className="flex items-center">
-                    <span className="text-lg font-semibold">SD<span className="text-sky-300">App</span></span>
+                    <span className="text-lg font-semibold">Puja<span className="text-sky-300">Pay</span></span>
                 </div>
 
                 {/* PUSH SPACE */}
@@ -118,6 +123,13 @@ function DashboardLayout({ children, user, onLogout }) {
                         className={navBtn}
                     >
                         Search People
+                    </button>
+
+                    <button
+                        onClick={() => { navigate('/individual-collection'); setOpen(false); }}
+                        className={navBtn}
+                    >
+                        Individual Collection
                     </button>
 
                     {user === "admin@sdapp.com" && (

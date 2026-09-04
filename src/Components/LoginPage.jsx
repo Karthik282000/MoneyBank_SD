@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './Constants.jsx';
 import {
   LOGIN_BLOCK_OPTIONS,
+  FORM_BLOCK_OPTIONS,
   OUTSIDE_BLOCK,
   SOCIETY_BLOCKS,
   blockLabel,
@@ -24,12 +25,11 @@ export default function LoginPage({ onLogin }) {
 
   /** admin stuff ---------------------------------------------------------------- */
   const [masterPassword, setMasterPassword] = useState('');
-  const [newUser, setNewUser] = useState({ email: '', password: '', blocks: [] });
+  const emptyUser = { email: '', password: '', blocks: [], name: '', collectionBlock: '' };
+  const [newUser, setNewUser] = useState({ ...emptyUser });
 
   const [updateUser, setUpdateUser] = useState({
-    email: '',
-    password: '',
-    blocks: [],
+    ...emptyUser,
   });
 
   const [loading, setLoading] = useState(false);
@@ -72,6 +72,41 @@ export default function LoginPage({ onLogin }) {
 
   const isAdmin = () => masterPassword === 'masterpassword123';
 
+  const renderNameAndCollectionFields = (user, setter) => (
+    <>
+      <input
+        type="text"
+        placeholder="Name"
+        className="input-neon"
+        value={user.name}
+        onChange={e => setter(prev => ({ ...prev, name: e.target.value }))}
+      />
+
+      <div>
+        <p className="text-sm text-slate-600 mb-2">Collection for the block</p>
+        <p className="text-xs text-slate-400 mb-2">
+          Combined collections from every block this user can access are counted under this block.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {FORM_BLOCK_OPTIONS.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => setter(prev => ({ ...prev, collectionBlock: opt }))}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-300 ${
+                user.collectionBlock === opt
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-glow'
+                  : 'bg-slate-100 border border-slate-200 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {blockLabel(opt)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+
   // Load a user's existing blocks so they appear pre-checked in the Update tab
   const loadUserBlocks = async (emailToLoad) => {
     const target = (emailToLoad || '').trim();
@@ -81,7 +116,12 @@ export default function LoginPage({ onLogin }) {
         params: { email: target }
       });
       if (data.found) {
-        setUpdateUser(prev => ({ ...prev, blocks: Array.isArray(data.blocks) ? data.blocks : [] }));
+        setUpdateUser(prev => ({
+          ...prev,
+          blocks: Array.isArray(data.blocks) ? data.blocks : [],
+          name: data.name || '',
+          collectionBlock: data.collectionBlock || '',
+        }));
       }
     } catch (err) {
       console.error('Could not load user blocks:', err);
@@ -129,6 +169,8 @@ export default function LoginPage({ onLogin }) {
   const handleAddUser = async () => {
 
     if (!isAdmin()) return alert('Incorrect master password.');
+    if (!newUser.name.trim()) return alert('Please enter the collector name.');
+    if (!newUser.collectionBlock) return alert('Please select Collection for the block.');
     if (!newUser.email || !newUser.password) return alert('Please enter both email and password.');
     if (newUser.blocks.length === 0) return alert('Select at least one block (or ALLBLOCKS).');
 
@@ -139,12 +181,14 @@ export default function LoginPage({ onLogin }) {
       const { data } = await axios.post(`${API_BASE_URL}/api/add-user`, {
         email: newUser.email,
         password: newUser.password,
-        blocks: newUser.blocks
+        blocks: newUser.blocks,
+        name: newUser.name,
+        collectionBlock: newUser.collectionBlock,
       });
 
       if (data.success) {
         alert('User created!');
-        setNewUser({ email: '', password: '', blocks: [] });
+        setNewUser({ ...emptyUser });
         setMasterPassword('');
       } else {
         alert(data.message || 'Failed to add user.');
@@ -165,6 +209,8 @@ export default function LoginPage({ onLogin }) {
   const handleUpdateUser = async () => {
 
     if (!isAdmin()) return alert('Incorrect master password.');
+    if (!updateUser.name.trim()) return alert('Please enter the collector name.');
+    if (!updateUser.collectionBlock) return alert('Please select Collection for the block.');
     if (!updateUser.email || !updateUser.password) return alert('Please enter email + new password.');
     if (updateUser.blocks.length === 0) return alert('Select at least one block (or ALLBLOCKS).');
 
@@ -175,12 +221,14 @@ export default function LoginPage({ onLogin }) {
       const { data } = await axios.post(`${API_BASE_URL}/api/update-user`, {
         email: updateUser.email,
         password: updateUser.password,
-        blocks: updateUser.blocks
+        blocks: updateUser.blocks,
+        name: updateUser.name,
+        collectionBlock: updateUser.collectionBlock,
       });
 
       if (data.success) {
         alert('User updated.');
-        setUpdateUser({ email: '', password: '', blocks: [] });
+        setUpdateUser({ ...emptyUser });
         setMasterPassword('');
       } else {
         alert(data.message || 'Failed to update user.');
@@ -328,6 +376,8 @@ export default function LoginPage({ onLogin }) {
                 onChange={e => setMasterPassword(e.target.value)}
               />
 
+              {renderNameAndCollectionFields(newUser, setNewUser)}
+
               <input
                 type="email"
                 placeholder="Email"
@@ -395,6 +445,8 @@ export default function LoginPage({ onLogin }) {
                 value={masterPassword}
                 onChange={e => setMasterPassword(e.target.value)}
               />
+
+              {renderNameAndCollectionFields(updateUser, setUpdateUser)}
 
               <input
                 type="email"

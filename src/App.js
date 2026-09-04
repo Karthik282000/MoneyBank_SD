@@ -7,6 +7,7 @@ import LoginPage from './Components/LoginPage.jsx';
 import Home from './Components/Home.jsx';
 import FormComponent from './Components/FormComponents.jsx';
 import SearchPeople from './Components/SearchPeople.jsx';
+import IndividualCollection from './Components/IndividualCollection.jsx';
 import AdminConfig from "./Components/AdminConfig.jsx";
 import DashboardLayout from "./Layout/DashboardLayout.jsx";
 import { API_BASE_URL } from './Components/Constants.jsx';
@@ -124,6 +125,7 @@ function App() {
     <Route path="/home" element={<Home allowedBlocks={allowedBlocks} />} />
     <Route path="/pay" element={<FormComponent allowedBlocks={allowedBlocks} />} />
     <Route path="/search" element={<SearchPeople allowedBlocks={allowedBlocks} />} />
+    <Route path="/individual-collection" element={<IndividualCollection user={loggedInUser} />} />
     <Route path="/admin-config" element={<AdminConfig />} />
     <Route path="*" element={<Navigate to="/home" />} />
   </Routes>

@@ -7,6 +7,14 @@ import { FORM_BLOCK_OPTIONS, isOutsideBlock, blockLabel } from './blockAccess.js
 
 // ...numberToWords and buildReceiptData remain unchanged...
 
+function loggedInCollectorEmail() {
+  try {
+    return (sessionStorage.getItem('user') || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 function numberToWords(num) {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
@@ -628,6 +636,7 @@ function FormComponent({ allowedBlocks }) {
           transactionReference: formData.transactionReference,
           transactionDated: formData.transactionDated,
           bankName: formData.bankName,
+          collectorEmail: loggedInCollectorEmail(),
         });
 
         const receiptNo = resp.data.receiptNo || formData.receiptNo;
@@ -652,7 +661,11 @@ function FormComponent({ allowedBlocks }) {
       }
 
       // ── NORMAL NEW TRANSACTION ─────────────────────────────────────────────
-      const payload = { ...formData, amountPaid: parseFloat(formData.amountPaid) };
+      const payload = {
+        ...formData,
+        amountPaid: parseFloat(formData.amountPaid),
+        collectorEmail: loggedInCollectorEmail(),
+      };
 
       const response = await axios.post(`${API_BASE_URL}/api/save-transaction`, payload);
 
@@ -724,7 +737,8 @@ function FormComponent({ allowedBlocks }) {
         ...formData,
         amountPaid: parseFloat(formData.amountPaid),
         amountPaidLastYear: parseFloat(formData.amountPaidLastYear) || 0,
-        receiptStatus: formData.receiptStatus || 'collected'
+        receiptStatus: formData.receiptStatus || 'collected',
+        collectorEmail: loggedInCollectorEmail(),
       };
 
       const response = await axios.post(`${API_BASE_URL}/api/create-new-house`, payload);

@@ -113,6 +113,9 @@ async function ensureReceiptImageColumn() {
     await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS transaction_reference TEXT`);
     await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS transaction_dated DATE`);
     await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS bank_name TEXT`);
+    await pool.query(`ALTER TABLE Logincredentials ADD COLUMN IF NOT EXISTS collector_name TEXT`);
+    await pool.query(`ALTER TABLE Logincredentials ADD COLUMN IF NOT EXISTS collection_block TEXT`);
+    await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS collector_email TEXT`);
     // Due entries may be saved without a payment mode
     try {
       await pool.query(`ALTER TABLE TransactionalDetails ALTER COLUMN modeofpayment DROP NOT NULL`);
@@ -205,6 +208,28 @@ function blocksForStorage(blocks) {
   return cleaned;
 }
 
+function normalizeCollectorEmail(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return v || null;
+}
+
+function blankToNull(value) {
+  const s = String(value ?? '').trim();
+  return s === '' ? null : s;
+}
+
+function normalizeCollectionBlock(value) {
+  const v = canonicalizeBlock(String(value || '').trim());
+  if (!v || v === 'ALLBLOCKS' || v === NO_OUTSIDE_FLAG) return '';
+  return v;
+}
+
+const COLLECTION_BLOCK_OPTIONS = [...SOCIETY_BLOCKS, OUTSIDE_BLOCK];
+
+function isAllowedCollectionBlock(block) {
+  return COLLECTION_BLOCK_OPTIONS.includes(canonicalizeBlock(block));
+}
+
 // Fetch the current signatory config (names shown on receipts).
 async function getReceiptConfig(executor = pool) {
   try {
@@ -250,6 +275,7 @@ async function ensureIndexes() {
     `CREATE INDEX IF NOT EXISTS idx_transaction_subscriptionid ON TransactionalDetails (subscriptionid)`,
     `CREATE INDEX IF NOT EXISTS idx_transaction_receiptstatus ON TransactionalDetails (receiptstatus)`,
     `CREATE INDEX IF NOT EXISTS idx_transaction_reference_receipt_no ON TransactionalDetails (reference_receipt_no)`,
+    `CREATE INDEX IF NOT EXISTS idx_transaction_collector_email ON TransactionalDetails (collector_email)`,
   ];
   for (const sql of statements) {
     try {
@@ -292,9 +318,15 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
+transporter.on('error', (err) => {
+  console.error('❌ SMTP ERROR:', err.code || '', err.message || err);
+});
 
 transporter.verify((error, success) => {
   if (error) {
@@ -1115,12 +1147,13 @@ app.get('/api/get-financial-year', (req, res) => {
 // Save Transaction for existing user
 // Save Transaction for existing user
 app.post('/api/save-transaction', async (req, res) => {
-  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, bhog, referenceReceiptNumber, transactionReference, transactionDated, bankName } = req.body;
+  const { houseNo, name, contact, block, email, amountPaid, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, bhog, referenceReceiptNumber, transactionReference, transactionDated, bankName, collectorEmail } = req.body;
   const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? 1 : parseInt(bhog, 10);
   const mode = paymentModeForDb(paymentMode);
   const txnRef = (transactionReference || utrNumber || '').trim() || null;
   const txnDated = transactionDated || null;
   const bank = (bankName || '').trim() || null;
+  const collectedBy = normalizeCollectorEmail(collectorEmail);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1164,9 +1197,9 @@ app.post('/api/save-transaction', async (req, res) => {
     console.log("NEW RECEIPT GENERATED:", receiptNo);
 
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, reference_receipt_no, transaction_reference, transaction_dated, bank_name, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, mode, txnRef || utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount, referenceReceiptNumber || null, txnRef, txnDated, bank]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, reference_receipt_no, transaction_reference, transaction_dated, bank_name, collector_email, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, mode, txnRef || utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount, referenceReceiptNumber || null, txnRef, txnDated, bank, collectedBy]
     );
     // 🔥 ALWAYS SAVE RECEIPT (CRITICAL FIX)
 const receiptPayload = {
@@ -1257,12 +1290,13 @@ await client.query(
 
 // Create new house + transaction
 app.post('/api/create-new-house', async (req, res) => {
-  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber, bhog, referenceReceiptNumber, transactionReference, transactionDated, bankName } = req.body;
+  const { houseNo, name, contact, email, block, amountPaid, amountPaidLastYear, yearOfPayment, paymentMode, utrNumber, referenceDetails, receiptStatus, previousYearReceiptNumber, bhog, referenceReceiptNumber, transactionReference, transactionDated, bankName, collectorEmail } = req.body;
   const bhogCount = (bhog === '' || bhog === null || bhog === undefined) ? 1 : parseInt(bhog, 10);
   const mode = paymentModeForDb(paymentMode);
   const txnRef = (transactionReference || utrNumber || '').trim() || null;
   const txnDated = transactionDated || null;
   const bank = (bankName || '').trim() || null;
+  const collectedBy = normalizeCollectorEmail(collectorEmail);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1292,9 +1326,9 @@ app.post('/api/create-new-house', async (req, res) => {
     const receiptNo = await generateReceiptNo(client);
 
     await client.query(
-      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, reference_receipt_no, transaction_reference, transaction_dated, bank_name, createdat)
-       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP)`,
-      [subscriptionId, amountPaid, mode, txnRef || utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount, referenceReceiptNumber || null, txnRef, txnDated, bank]
+      `INSERT INTO TransactionalDetails (subscriptionid, yearofpayment, subscriptionamount, modeofpayment, utrnumber, referencenumber, receiptstatus, receipt_no, bhog, reference_receipt_no, transaction_reference, transaction_dated, bank_name, collector_email, createdat)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
+      [subscriptionId, amountPaid, mode, txnRef || utrNumber, referenceDetails, receiptStatus || 'due', receiptNo, bhogCount, referenceReceiptNumber || null, txnRef, txnDated, bank, collectedBy]
     );
 
     // 🔥 ALWAYS SAVE RECEIPT
@@ -1596,7 +1630,13 @@ app.post('/api/login', async (req, res) => {
 
     if (result.rows.length > 0) {
       const user = result.rows[0];
-      res.json({ success: true, allowedBlocks: withDefaultOutsideAccess(user.allowed_blocks), sessionId: SERVER_SESSION_ID });
+      res.json({
+        success: true,
+        allowedBlocks: withDefaultOutsideAccess(user.allowed_blocks),
+        collectorName: user.collector_name || '',
+        collectionBlock: user.collection_block || '',
+        sessionId: SERVER_SESSION_ID,
+      });
     } else {
       res.json({ success: false });
     }
@@ -1608,8 +1648,20 @@ app.post('/api/login', async (req, res) => {
 
 
 app.post('/api/add-user', async (req, res) => {
-  const { email, password, blocks } = req.body;
+  const { email, password, blocks, name, collectionBlock } = req.body;
+  const collectorName = String(name || '').trim();
+  const homeBlock = normalizeCollectionBlock(collectionBlock);
   try {
+    if (!email || !password) {
+      return res.json({ success: false, message: 'Email and password are required' });
+    }
+    if (!collectorName) {
+      return res.json({ success: false, message: 'Name is required' });
+    }
+    if (!homeBlock || !isAllowedCollectionBlock(homeBlock)) {
+      return res.json({ success: false, message: 'Please select Collection for the block' });
+    }
+
     const checkResult = await pool.query(
       'SELECT * FROM Logincredentials WHERE email = $1',
       [email]
@@ -1620,8 +1672,9 @@ app.post('/api/add-user', async (req, res) => {
     }
 
     await pool.query(
-      'INSERT INTO Logincredentials (email, password, allowed_blocks) VALUES ($1, $2, $3)',
-      [email, password, blocksForStorage(blocks)]
+      `INSERT INTO Logincredentials (email, password, allowed_blocks, collector_name, collection_block)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [email, password, blocksForStorage(blocks), collectorName, homeBlock]
     );
     res.json({ success: true });
   } catch (err) {
@@ -1637,13 +1690,19 @@ app.get('/api/user-blocks', async (req, res) => {
   if (!email) return res.status(400).json({ error: 'Email is required' });
   try {
     const result = await pool.query(
-      'SELECT allowed_blocks FROM Logincredentials WHERE email = $1',
+      'SELECT allowed_blocks, collector_name, collection_block FROM Logincredentials WHERE email = $1',
       [email]
     );
     if (result.rows.length === 0) {
-      return res.json({ found: false, blocks: [] });
+      return res.json({ found: false, blocks: [], name: '', collectionBlock: '' });
     }
-    res.json({ found: true, blocks: withDefaultOutsideAccess(result.rows[0].allowed_blocks) });
+    const row = result.rows[0];
+    res.json({
+      found: true,
+      blocks: withDefaultOutsideAccess(row.allowed_blocks),
+      name: row.collector_name || '',
+      collectionBlock: row.collection_block || '',
+    });
   } catch (err) {
     console.error('Error fetching user blocks:', err);
     res.status(500).json({ error: 'Failed to fetch user blocks' });
@@ -1652,17 +1711,122 @@ app.get('/api/user-blocks', async (req, res) => {
 
 // Update user credentials
 app.post('/api/update-user', async (req, res) => {
-  const { email, password, blocks } = req.body;
+  const { email, password, blocks, name, collectionBlock } = req.body;
+  const collectorName = String(name || '').trim();
+  const homeBlock = normalizeCollectionBlock(collectionBlock);
 
   try {
-    await pool.query(
-      'UPDATE Logincredentials SET password = $1, allowed_blocks = $2 WHERE email = $3',
-      [password, blocksForStorage(blocks), email]
+    if (!email || !password) {
+      return res.json({ success: false, message: 'Email and password are required' });
+    }
+    if (!collectorName) {
+      return res.json({ success: false, message: 'Name is required' });
+    }
+    if (!homeBlock || !isAllowedCollectionBlock(homeBlock)) {
+      return res.json({ success: false, message: 'Please select Collection for the block' });
+    }
+
+    const result = await pool.query(
+      `UPDATE Logincredentials
+       SET password = $1, allowed_blocks = $2, collector_name = $3, collection_block = $4
+       WHERE email = $5`,
+      [password, blocksForStorage(blocks), collectorName, homeBlock, email]
     );
+    if (result.rowCount === 0) {
+      return res.json({ success: false, message: 'User not found' });
+    }
     res.json({ success: true });
   } catch (err) {
     console.error('Error updating user:', err);
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+app.get('/api/individual-collections', async (req, res) => {
+  try {
+    const usersRes = await pool.query(
+      `SELECT email, collector_name, collection_block, allowed_blocks
+       FROM Logincredentials
+       ORDER BY LOWER(COALESCE(NULLIF(TRIM(collector_name), ''), email))`
+    );
+    const totalsRes = await pool.query(
+      `SELECT
+         LOWER(TRIM(t.collector_email)) AS email,
+         COALESCE(NULLIF(TRIM(c.block), ''), 'Unassigned') AS block,
+         COALESCE(SUM(t.subscriptionamount), 0) AS amount,
+         COUNT(*) AS txn_count
+       FROM TransactionalDetails t
+       JOIN SubscriptionDetails s ON s.subscriptionid = t.subscriptionid
+       JOIN CollectionDetails c ON c.subscriber_id = s.subscriberid
+       WHERE t.collector_email IS NOT NULL AND TRIM(t.collector_email) <> ''
+         AND LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')
+       GROUP BY 1, 2`
+    );
+
+    const byEmail = {};
+    for (const row of totalsRes.rows) {
+      const email = row.email;
+      if (!byEmail[email]) byEmail[email] = { byBlock: [], total: 0, txnCount: 0 };
+      const amount = Number(row.amount) || 0;
+      const count = Number(row.txn_count) || 0;
+      byEmail[email].byBlock.push({ block: row.block, amount, count });
+      byEmail[email].total += amount;
+      byEmail[email].txnCount += count;
+    }
+
+    const collectors = usersRes.rows.map((u) => {
+      const stats = byEmail[String(u.email || '').toLowerCase()] || { byBlock: [], total: 0, txnCount: 0 };
+      return {
+        email: u.email,
+        name: String(u.collector_name || '').trim() || u.email,
+        collectionBlock: u.collection_block || '',
+        allowedBlocks: withDefaultOutsideAccess(u.allowed_blocks),
+        totalAmount: stats.total,
+        txnCount: stats.txnCount,
+        byBlock: stats.byBlock.sort((a, b) => b.amount - a.amount),
+      };
+    });
+
+    const known = new Set(collectors.map((c) => String(c.email || '').toLowerCase()));
+    for (const email of Object.keys(byEmail)) {
+      if (known.has(email)) continue;
+      const stats = byEmail[email];
+      collectors.push({
+        email,
+        name: email,
+        collectionBlock: '',
+        allowedBlocks: [],
+        totalAmount: stats.total,
+        txnCount: stats.txnCount,
+        byBlock: stats.byBlock.sort((a, b) => b.amount - a.amount),
+      });
+    }
+
+    const viewer = normalizeCollectorEmail(req.query.email);
+    const isAdmin = viewer === 'admin@sdapp.com';
+    const named = (c) => {
+      const display = String(c.name || '').trim();
+      return display && display.toLowerCase() !== String(c.email || '').toLowerCase();
+    };
+
+    let visible = collectors.filter((c) => {
+      if (named(c) || String(c.collectionBlock || '').trim()) return true;
+      if (isAdmin && Number(c.totalAmount) > 0) return true;
+      return false;
+    });
+
+    if (!isAdmin) {
+      visible = visible.filter((c) => String(c.email || '').toLowerCase() === viewer);
+      if (visible.length === 0 && viewer) {
+        const self = collectors.find((c) => String(c.email || '').toLowerCase() === viewer);
+        if (self) visible = [self];
+      }
+    }
+
+    res.json({ collectors: visible, isAdmin });
+  } catch (err) {
+    console.error('Error fetching individual collections:', err);
+    res.status(500).json({ error: 'Failed to fetch individual collections' });
   }
 });
 
@@ -2074,7 +2238,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
 // mark it collected, recompute totals, and regenerate the receipt image.
 // Identified by the receipt_no of the due transaction (unique per transaction).
 app.post('/api/complete-due', async (req, res) => {
-  const { receiptNo, paymentMode, utrNumber, referenceDetails, bhog, contact, email, referenceReceiptNumber, transactionReference, transactionDated, bankName } = req.body;
+  const { receiptNo, paymentMode, utrNumber, referenceDetails, bhog, contact, email, referenceReceiptNumber, transactionReference, transactionDated, bankName, collectorEmail } = req.body;
   if (!receiptNo) return res.status(400).json({ error: 'receiptNo is required' });
   if (!paymentModeForDb(paymentMode)) return res.status(400).json({ error: 'paymentMode is required to complete a due entry' });
 
@@ -2113,8 +2277,9 @@ app.post('/api/complete-due', async (req, res) => {
            reference_receipt_no = COALESCE($5, reference_receipt_no),
            transaction_reference = COALESCE($6, transaction_reference),
            transaction_dated = COALESCE($7, transaction_dated),
-           bank_name = COALESCE($8, bank_name)
-       WHERE receipt_no = $9`,
+           bank_name = COALESCE($8, bank_name),
+           collector_email = COALESCE($9, collector_email)
+       WHERE receipt_no = $10`,
       [
         paymentMode,
         (transactionReference || utrNumber || null),
@@ -2124,6 +2289,7 @@ app.post('/api/complete-due', async (req, res) => {
         (transactionReference || utrNumber || '').trim() || null,
         transactionDated || null,
         (bankName || '').trim() || null,
+        normalizeCollectorEmail(collectorEmail),
         receiptNo
       ]
     );
@@ -2281,6 +2447,119 @@ app.get('/api/receipt-svg/:receiptNo', async (req, res) => {
 });
 
 
+// Update reference receipt no / customer contact / customer email on an existing
+// receipt. Empty submitted fields are ignored so existing DB values are kept.
+app.post('/api/receipts/update-details', async (req, res) => {
+  const receiptNo = String(req.body?.receiptNo ?? '').trim();
+  if (!receiptNo) {
+    return res.status(400).json({ error: 'receiptNo is required' });
+  }
+
+  const refNo = blankToNull(req.body?.referenceReceiptNo);
+  const contactVal = blankToNull(req.body?.contact);
+  const emailVal = blankToNull(req.body?.email);
+
+  if (!refNo && !contactVal && !emailVal) {
+    return res.json({ success: true, message: 'No changes' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const found = await client.query(
+      `SELECT r.receipt_no, r.houseno, r.name, r.amount, r.year_of_payment, r.payment_mode,
+              r.receipt_image_url, r.receipt_view_url,
+              t.subscriptionid,
+              s.subscriberid
+       FROM Receipts r
+       LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no
+       LEFT JOIN SubscriptionDetails s ON s.subscriptionid = t.subscriptionid
+       WHERE r.receipt_no = $1
+       LIMIT 1`,
+      [receiptNo]
+    );
+
+    if (found.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Receipt not found' });
+    }
+
+    const row = found.rows[0];
+    let subscriberId = row.subscriberid || null;
+
+    if (!subscriberId && row.houseno && row.name) {
+      const subRes = await client.query(
+        `SELECT subscriber_id
+         FROM CollectionDetails
+         WHERE houseno = $1 AND name = $2
+         ORDER BY CASE WHEN LOWER(COALESCE(state, '')) = 'active' THEN 0 ELSE 1 END
+         LIMIT 1`,
+        [row.houseno, row.name]
+      );
+      subscriberId = subRes.rows[0]?.subscriber_id || null;
+    }
+
+    await client.query(
+      `UPDATE Receipts
+       SET reference_receipt_no = COALESCE($1, reference_receipt_no),
+           email = COALESCE($2, email)
+       WHERE receipt_no = $3`,
+      [refNo, emailVal, receiptNo]
+    );
+
+    await client.query(
+      `UPDATE TransactionalDetails
+       SET reference_receipt_no = COALESCE($1, reference_receipt_no)
+       WHERE receipt_no = $2`,
+      [refNo, receiptNo]
+    );
+
+    if (subscriberId && (contactVal || emailVal)) {
+      await client.query(
+        `UPDATE CollectionDetails
+         SET contact = COALESCE($1, contact),
+             email = COALESCE($2, email)
+         WHERE subscriber_id = $3`,
+        [contactVal, emailVal, subscriberId]
+      );
+    }
+
+    try {
+      await client.query('SAVEPOINT receipt_mapping');
+      await client.query(
+        `UPDATE ReceiptMapping
+         SET reference_receipt_no = COALESCE($1, reference_receipt_no)
+         WHERE receipt_no = $2`,
+        [refNo, receiptNo]
+      );
+      await client.query('RELEASE SAVEPOINT receipt_mapping');
+    } catch {
+      await client.query('ROLLBACK TO SAVEPOINT receipt_mapping');
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      success: true,
+      receiptNo: row.receipt_no,
+      name: row.name,
+      houseno: row.houseno,
+      amount: row.amount,
+      yearOfPayment: row.year_of_payment,
+      paymentMode: row.payment_mode,
+      contact: contactVal,
+      receiptImageUrl: row.receipt_image_url || '',
+      receiptViewUrl: row.receipt_view_url || '',
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error updating receipt details:', err);
+    res.status(500).json({ error: 'Failed to update receipt details' });
+  } finally {
+    client.release();
+  }
+});
+
 // ✅ GET RECEIPTS — scoped to the caller's allowed blocks so a single-block
 // user only ever sees their own block's receipts.
 app.get('/api/receipts', async (req, res) => {
@@ -2306,8 +2585,11 @@ app.get('/api/receipts', async (req, res) => {
         r.created_at,
         r.receipt_html,
         r.receipt_image_url,
+        r.receipt_view_url,
+        r.year_of_payment,
         r.payment_mode,
-        r.email,
+        COALESCE(NULLIF(TRIM(c.email), ''), r.email) AS email,
+        c.contact,
         r.president,
         r.secretary1,
         r.secretary2,
@@ -2360,8 +2642,16 @@ app.post('/api/resend-whatsapp', async (req, res) => {
   await ensureReceiptImageColumn();
   await ensureReceiptsBucket();
   await ensureIndexes();
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`🚀 Server running at http://localhost:${port}`);
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Close the other Node process on that port, then start the server again.`);
+    } else {
+      console.error('Server listen error:', err);
+    }
+    process.exit(1);
   });
 })().catch((err) => {
   console.error('Failed to start server:', err);
