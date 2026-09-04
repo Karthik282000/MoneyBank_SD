@@ -2,7 +2,7 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
 import pkg from 'pg';
-import nodemailer from 'nodemailer';
+// import nodemailer from 'nodemailer';
 import axios from 'axios';
 
 import crypto from 'crypto';
@@ -62,6 +62,23 @@ const SERVER_SESSION_ID = crypto.randomUUID();
 app.use(bodyParser.json());
 app.use(cors());
 
+
+console.log("===== DB ENV CHECK =====");
+
+console.log("DATABASE_URL exists:", Boolean(process.env.DATABASE_URL));
+
+try {
+  const u = new URL(process.env.DATABASE_URL);
+
+  console.log("DB HOST:", u.hostname);
+  console.log("DB PORT:", u.port);
+  console.log("DB USER:", u.username);
+  console.log("DB NAME:", u.pathname);
+} catch (e) {
+  console.error("DATABASE_URL INVALID:", e.message);
+}
+
+console.log("========================");
 
 // ✅ SUPABASE CONNECTION (Session Pooler, port 5432)
 const pool = new Pool({
@@ -311,30 +328,30 @@ async function ensureIndexes() {
 // });
 
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // IMPORTANT
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-});
-
-transporter.on('error', (err) => {
-  console.error('❌ SMTP ERROR:', err.code || '', err.message || err);
-});
-
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('❌ SMTP ERROR:', error);
-  } else {
-    console.log('✅ SMTP READY');
-  }
-});
+// const transporter = nodemailer.createTransport({
+//   host: 'smtp.gmail.com',
+//   port: 465,
+//   secure: true, // IMPORTANT
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS
+//   },
+//   tls: {
+//     rejectUnauthorized: false
+//   }
+// });
+//
+// transporter.on('error', (err) => {
+//   console.error('❌ SMTP ERROR:', err.code || '', err.message || err);
+// });
+//
+// transporter.verify((error, success) => {
+//   if (error) {
+//     console.error('❌ SMTP ERROR:', error);
+//   } else {
+//     console.log('✅ SMTP READY');
+//   }
+// });
 
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN; // Use env var ideally
@@ -976,38 +993,38 @@ app.get('/api/backfill-receipt-images', async (req, res) => {
   }
 });
 
-app.post('/api/send-receipt', async (req, res) => {
-  const { email, formData, receiptData } = req.body;
-
-  if (!email) {
-    return res.status(400).json({ error: 'No email provided.' });
-  }
-
-  try {
-    const svgBuffer = await generateReceiptSvgBuffer(receiptData);
-
-    // ✅ SEND EMAIL (SVG attachment — no headless browser needed)
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Your Submission and Receipt - Sarbojanin Durgotsab 2026',
-      html: `<h3>Thank you for your contribution!</h3><p>Your receipt (No. ${receiptData?.receiptNo || ''}) is attached to this email.</p>`,
-      attachments: [
-        {
-          filename: `Receipt-${receiptData?.receiptNo || 'copy'}.svg`,
-          content: svgBuffer,
-          contentType: 'image/svg+xml'
-        }
-      ]
-    });
-
-    res.json({ message: 'Receipt sent successfully!' });
-
-  } catch (err) {
-    console.error('❌ Email send failed:', err);
-    res.status(500).json({ error: 'Sending failed.' });
-  }
-});
+// app.post('/api/send-receipt', async (req, res) => {
+//   const { email, formData, receiptData } = req.body;
+//
+//   if (!email) {
+//     return res.status(400).json({ error: 'No email provided.' });
+//   }
+//
+//   try {
+//     const svgBuffer = await generateReceiptSvgBuffer(receiptData);
+//
+//     // ✅ SEND EMAIL (SVG attachment — no headless browser needed)
+//     await transporter.sendMail({
+//       from: process.env.EMAIL_USER,
+//       to: email,
+//       subject: 'Your Submission and Receipt - Sarbojanin Durgotsab 2026',
+//       html: `<h3>Thank you for your contribution!</h3><p>Your receipt (No. ${receiptData?.receiptNo || ''}) is attached to this email.</p>`,
+//       attachments: [
+//         {
+//           filename: `Receipt-${receiptData?.receiptNo || 'copy'}.svg`,
+//           content: svgBuffer,
+//           contentType: 'image/svg+xml'
+//         }
+//       ]
+//     });
+//
+//     res.json({ message: 'Receipt sent successfully!' });
+//
+//   } catch (err) {
+//     console.error('❌ Email send failed:', err);
+//     res.status(500).json({ error: 'Sending failed.' });
+//   }
+// });
 
 
 app.post('/api/update-receipt-config', async (req, res) => {

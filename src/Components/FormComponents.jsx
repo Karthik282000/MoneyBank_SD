@@ -260,17 +260,17 @@ function FormComponent({ allowedBlocks }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  async function sendReceiptToBackend(receiptData) {
-    try {
-      await axios.post(`${API_BASE_URL}/api/send-receipt`, {
-        email: formData.email,
-        formData: formData,
-        receiptData: receiptData
-      });
-    } catch (err) {
-      console.error('Failed to send receipt:', err);
-    }
-  }
+  // async function sendReceiptToBackend(receiptData) {
+  //   try {
+  //     await axios.post(`${API_BASE_URL}/api/send-receipt`, {
+  //       email: formData.email,
+  //       formData: formData,
+  //       receiptData: receiptData
+  //     });
+  //   } catch (err) {
+  //     console.error('Failed to send receipt:', err);
+  //   }
+  // }
 
   // Build the WhatsApp message text (optionally including the receipt link)
   const buildWhatsAppMessage = ({ name, receiptNo, houseNo, amountPaid, yearOfPayment, paymentMode, receiptLink }) => {
@@ -647,9 +647,9 @@ function FormComponent({ allowedBlocks }) {
           receiptSvg: resp.data.receiptSvg || '',
         });
 
-        if (formData.email) {
-          await sendReceiptToBackend(buildReceiptData(formData, receiptNo));
-        }
+        // if (formData.email) {
+        //   await sendReceiptToBackend(buildReceiptData(formData, receiptNo));
+        // }
 
         setCompletingDue(false);
         completingDueRef.current = false;
@@ -708,10 +708,10 @@ function FormComponent({ allowedBlocks }) {
       });
 
       // ✅ SEND EMAIL ONLY IF EXISTS
-      if (formData.email) {
-        const receiptToSend = buildReceiptData(formData, receiptNo);
-        await sendReceiptToBackend(receiptToSend);
-      }
+      // if (formData.email) {
+      //   const receiptToSend = buildReceiptData(formData, receiptNo);
+      //   await sendReceiptToBackend(receiptToSend);
+      // }
 
       setTimeout(() => {
         // ❌ REMOVED: fetchData() and fetchFinancialYear() — handled locally above
@@ -777,10 +777,10 @@ function FormComponent({ allowedBlocks }) {
       });
 
       // ✅ EMAIL OPTIONAL
-      if (formData.email) {
-        const receiptToSend = buildReceiptData(formData, receiptNo);
-        await sendReceiptToBackend(receiptToSend);
-      }
+      // if (formData.email) {
+      //   const receiptToSend = buildReceiptData(formData, receiptNo);
+      //   await sendReceiptToBackend(receiptToSend);
+      // }
 
       // ❌ REMOVED: await fetchData() and await fetchFinancialYear() — done locally above
 
