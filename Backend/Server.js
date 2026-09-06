@@ -283,6 +283,30 @@ async function ensureReceiptsBucket() {
 }
 
 // Create indexes on the hot query paths (joins/filters used by the dashboard & search)
+async function ensureSubscriberIdSequence() {
+  try {
+    await pool.query(`
+      CREATE SEQUENCE IF NOT EXISTS collectiondetails_subscriber_id_seq
+    `);
+    await pool.query(`
+      SELECT setval(
+        'collectiondetails_subscriber_id_seq',
+        COALESCE((SELECT MAX(subscriber_id) FROM CollectionDetails), 0) + 1,
+        false
+      )
+    `);
+    await pool.query(`
+      ALTER TABLE CollectionDetails
+      ALTER COLUMN subscriber_id SET DEFAULT nextval('collectiondetails_subscriber_id_seq')
+    `);
+    await pool.query(`
+      ALTER SEQUENCE collectiondetails_subscriber_id_seq OWNED BY CollectionDetails.subscriber_id
+    `);
+  } catch (err) {
+    console.error('Could not ensure subscriber_id sequence:', err.message);
+  }
+}
+
 async function ensureIndexes() {
   const statements = [
     `CREATE INDEX IF NOT EXISTS idx_collection_block ON CollectionDetails (block)`,
@@ -2657,6 +2681,7 @@ app.post('/api/resend-whatsapp', async (req, res) => {
 
 (async () => {
   await ensureReceiptImageColumn();
+  await ensureSubscriberIdSequence();
   await ensureReceiptsBucket();
   await ensureIndexes();
   const server = app.listen(port, () => {
