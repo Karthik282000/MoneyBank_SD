@@ -283,30 +283,6 @@ async function ensureReceiptsBucket() {
 }
 
 // Create indexes on the hot query paths (joins/filters used by the dashboard & search)
-async function ensureSubscriberIdSequence() {
-  try {
-    await pool.query(`
-      CREATE SEQUENCE IF NOT EXISTS collectiondetails_subscriber_id_seq
-    `);
-    await pool.query(`
-      SELECT setval(
-        'collectiondetails_subscriber_id_seq',
-        COALESCE((SELECT MAX(subscriber_id) FROM CollectionDetails), 0) + 1,
-        false
-      )
-    `);
-    await pool.query(`
-      ALTER TABLE CollectionDetails
-      ALTER COLUMN subscriber_id SET DEFAULT nextval('collectiondetails_subscriber_id_seq')
-    `);
-    await pool.query(`
-      ALTER SEQUENCE collectiondetails_subscriber_id_seq OWNED BY CollectionDetails.subscriber_id
-    `);
-  } catch (err) {
-    console.error('Could not ensure subscriber_id sequence:', err.message);
-  }
-}
-
 async function ensureIndexes() {
   const statements = [
     `CREATE INDEX IF NOT EXISTS idx_collection_block ON CollectionDetails (block)`,
@@ -408,6 +384,13 @@ const WHATSAPP_LANG_CODE = 'en_US'; // Template language
 //   );
 //   return nextReceiptNo;
 // }
+
+async function nextSubscriberId(client) {
+  const res = await client.query(
+    `SELECT COALESCE(MAX(subscriber_id), 0) + 1 AS next_id FROM CollectionDetails`
+  );
+  return res.rows[0].next_id;
+}
 
 async function generateReceiptNo(client) {
   const res = await client.query(`SELECT nextval('receipt_seq') as seq`);
@@ -1204,10 +1187,11 @@ app.post('/api/save-transaction', async (req, res) => {
     );
     let subscriberId;
     if (subRes.rows.length === 0) {
+      subscriberId = await nextSubscriberId(client);
       const insertRes = await client.query(
-        `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus)
-         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6) RETURNING subscriber_id`,
-        [houseNo, name, contact, email || null, block, receiptStatus || 'due']
+        `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', 0, $7) RETURNING subscriber_id`,
+        [subscriberId, houseNo, name, contact, email || null, block, receiptStatus || 'due']
       );
       subscriberId = insertRes.rows[0].subscriber_id;
     } else {
@@ -1341,13 +1325,12 @@ app.post('/api/create-new-house', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const colRes = await client.query(
-      `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8)
-       RETURNING subscriber_id`,
-      [houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '']
+    const subscriberId = await nextSubscriberId(client);
+    await client.query(
+      `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9)`,
+      [subscriberId, houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '']
     );
-    const subscriberId = colRes.rows[0].subscriber_id;
     let subRes = await client.query(
       'SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1 AND yearofsubscription = $2',
       [subscriberId, yearOfPayment]
@@ -2681,7 +2664,6 @@ app.post('/api/resend-whatsapp', async (req, res) => {
 
 (async () => {
   await ensureReceiptImageColumn();
-  await ensureSubscriberIdSequence();
   await ensureReceiptsBucket();
   await ensureIndexes();
   const server = app.listen(port, () => {
