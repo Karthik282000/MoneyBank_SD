@@ -1910,6 +1910,57 @@ app.get('/api/individual-collections/transactions', async (req, res) => {
   }
 });
 
+app.get('/api/individual-collections/block-transactions', async (req, res) => {
+  try {
+    const viewer = normalizeCollectorEmail(req.query.viewer);
+    if (viewer !== 'admin@sdapp.com') {
+      return res.status(403).json({ error: 'Not allowed' });
+    }
+
+    let emails = [];
+    if (req.query.emails) {
+      try {
+        const parsed = JSON.parse(req.query.emails);
+        emails = Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        emails = String(req.query.emails).split(',');
+      }
+    }
+    emails = [...new Set(emails.map((e) => normalizeCollectorEmail(e)).filter(Boolean))];
+    if (emails.length === 0) {
+      return res.json({ transactions: [] });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         LOWER(TRIM(t.collector_email)) AS collector_email,
+         t.receipt_no,
+         t.reference_receipt_no,
+         t.subscriptionamount AS amount,
+         t.modeofpayment AS payment_mode,
+         t.receiptstatus,
+         t.createdat,
+         t.yearofpayment,
+         c.houseno,
+         c.name,
+         c.contact,
+         c.block
+       FROM TransactionalDetails t
+       JOIN SubscriptionDetails s ON s.subscriptionid = t.subscriptionid
+       JOIN CollectionDetails c ON c.subscriber_id = s.subscriberid
+       WHERE LOWER(TRIM(t.collector_email)) = ANY($1::text[])
+         AND LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')
+       ORDER BY LOWER(TRIM(t.collector_email)), t.createdat DESC NULLS LAST, t.receipt_no DESC`,
+      [emails]
+    );
+
+    res.json({ transactions: result.rows });
+  } catch (err) {
+    console.error('Error fetching block collector transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch block transactions' });
+  }
+});
+
 app.post('/api/filter-block-total', async (req, res) => {
   const { block } = req.body;
 

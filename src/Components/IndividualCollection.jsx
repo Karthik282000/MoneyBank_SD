@@ -1,35 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import {
-  Bar,
-  BarChart,
   Cell,
-  LabelList,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from 'recharts';
 import { API_BASE_URL } from './Constants.jsx';
 import { FORM_BLOCK_OPTIONS, blockLabel, blockPhrase } from './blockAccess.js';
 
-const GRADIENTS = [
-  ['#1d4ed8', '#60a5fa'],
-  ['#0f766e', '#5eead4'],
-  ['#4f46e5', '#a5b4fc'],
-  ['#0369a1', '#7dd3fc'],
-  ['#7c3aed', '#d8b4fe'],
-  ['#b45309', '#fcd34d'],
-];
-
-function formatRupees(value) {
-  return `₹${Number(value || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
-}
+const BLOCK_COLORS = {
+  A: '#2563eb',
+  B: '#0284c7',
+  C: '#4f46e5',
+  D: '#0f766e',
+  Outside: '#b45309',
+};
 
 function formatRupeesExact(value) {
   return `₹${Number(value || 0).toLocaleString('en-IN', {
@@ -38,298 +25,13 @@ function formatRupeesExact(value) {
   })}`;
 }
 
-function ChartTooltip({ active, payload, label }) {
+function ChartTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
   const item = payload[0];
   return (
     <div className="rounded-2xl border border-blue-100 bg-white/95 px-4 py-3 shadow-glow-soft">
-      <p className="text-[10px] uppercase tracking-[0.2em] text-blue-500">{label || item.name}</p>
+      <p className="text-[10px] uppercase tracking-[0.2em] text-blue-500">{item.name}</p>
       <p className="mt-1 text-xl font-bold text-slate-800">{formatRupeesExact(item.value)}</p>
-    </div>
-  );
-}
-
-function CollectionChartHero({ title, subtitle, totalLabel, total, blockRows, prefix, onOpenTransactions }) {
-  return (
-    <div className="glass-card overflow-hidden">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/70 px-5 py-4 md:px-8">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.28em] text-blue-500/80">{title}</p>
-          <h3 className="mt-1 text-xl md:text-2xl font-semibold text-slate-800">{subtitle}</h3>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenTransactions}
-          className="text-right rounded-2xl px-3 py-2 -mr-1 transition hover:bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
-          title="View all transactions"
-        >
-          <p className="text-[11px] uppercase tracking-widest text-slate-400">{totalLabel}</p>
-          <p className="text-2xl md:text-3xl font-bold neon-text">{formatRupeesExact(total)}</p>
-          {onOpenTransactions && (
-            <p className="mt-1 text-[11px] font-semibold text-blue-500">View transactions</p>
-          )}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-2 p-4 md:p-6">
-        <div className="lg:col-span-3 min-h-[260px]">
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={blockRows} margin={{ top: 28, right: 12, left: 0, bottom: 8 }} barCategoryGap="32%">
-              <defs>
-                {GRADIENTS.map(([from, to], i) => (
-                  <linearGradient key={i} id={`${prefix}-bar-${i}`} x1="0" y1="1" x2="0" y2="0">
-                    <stop offset="0%" stopColor={from} />
-                    <stop offset="100%" stopColor={to} />
-                  </linearGradient>
-                ))}
-              </defs>
-              <XAxis
-                dataKey="name"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#64748b', fontSize: 13, fontWeight: 600 }}
-              />
-              <YAxis hide />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(37,99,235,0.05)' }} />
-              <Bar dataKey="amount" maxBarSize={72} radius={[14, 14, 6, 6]}>
-                {blockRows.map((entry, index) => (
-                  <Cell key={entry.name} fill={`url(#${prefix}-bar-${index % GRADIENTS.length})`} />
-                ))}
-                <LabelList
-                  dataKey="amount"
-                  position="top"
-                  formatter={(value) => formatRupees(value)}
-                  style={{ fill: '#1e293b', fontSize: 12, fontWeight: 700 }}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="lg:col-span-2 relative min-h-[260px]">
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <defs>
-                {GRADIENTS.map(([from, to], i) => (
-                  <linearGradient key={i} id={`${prefix}-pie-${i}`} x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor={from} />
-                    <stop offset="100%" stopColor={to} />
-                  </linearGradient>
-                ))}
-              </defs>
-              <Pie
-                data={blockRows.filter((row) => row.amount > 0)}
-                dataKey="amount"
-                nameKey="name"
-                innerRadius="58%"
-                outerRadius="82%"
-                paddingAngle={blockRows.filter((row) => row.amount > 0).length > 1 ? 5 : 0}
-                cornerRadius={8}
-                stroke="none"
-              >
-                {blockRows.filter((row) => row.amount > 0).map((entry, index) => (
-                  <Cell key={entry.name} fill={`url(#${prefix}-pie-${index % GRADIENTS.length})`} />
-                ))}
-              </Pie>
-              <Tooltip content={<ChartTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Blocks</span>
-            <span className="text-xl font-bold text-slate-800">
-              {blockRows.filter((row) => row.amount > 0).length || 0}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 px-4 pb-5 md:px-6">
-        {blockRows.map((row, index) => (
-          <div key={row.name} className="rounded-2xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ background: GRADIENTS[index % GRADIENTS.length][0] }}
-              />
-              <p className="text-xs uppercase tracking-wider text-slate-500">{row.cardTitle || row.name}</p>
-            </div>
-            <p className="mt-1 text-lg font-bold text-slate-800">{formatRupeesExact(row.amount)}</p>
-            <p className="text-xs text-slate-400">
-              {row.detail || `${row.share}% of total`}
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AdminBlockTotals({ collectors }) {
-  const segmentColors = {
-    A: '#2563eb',
-    B: '#0284c7',
-    C: '#4f46e5',
-    D: '#0f766e',
-    Outside: '#b45309',
-  };
-
-  const grouped = FORM_BLOCK_OPTIONS.map((block) => {
-    const members = collectors.filter(
-      (c) => String(c.collectionBlock || '').trim().toLowerCase() === String(block).toLowerCase()
-    );
-    const amount = members.reduce((sum, c) => sum + (Number(c.totalAmount) || 0), 0);
-    return {
-      key: block,
-      label: blockPhrase(block),
-      amount,
-      collectors: members.length,
-      names: members.map((m) => m.name).filter(Boolean),
-      color: segmentColors[block] || '#2563eb',
-    };
-  }).filter((row) => row.collectors > 0 || row.amount > 0);
-
-  if (grouped.length === 0) return null;
-
-  const ranked = [...grouped].sort((a, b) => b.amount - a.amount);
-  const grandTotal = ranked.reduce((sum, row) => sum + row.amount, 0);
-
-  return (
-    <div className="glass-card overflow-hidden">
-      <div className="px-6 pt-6 pb-5 md:px-8 border-b border-slate-100">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.35em] text-slate-400">Statement</p>
-            <h3 className="mt-1 text-2xl font-semibold text-slate-800">Total collection by block</h3>
-          </div>
-          <p className="text-3xl font-bold tabular-nums text-slate-900">{formatRupeesExact(grandTotal)}</p>
-        </div>
-
-        <div className="mt-6 flex h-4 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/80">
-          {ranked.map((row) => {
-            const share = grandTotal > 0 ? (row.amount / grandTotal) * 100 : 0;
-            if (share <= 0) return null;
-            return (
-              <div
-                key={row.key}
-                className="h-full"
-                style={{
-                  width: `${share}%`,
-                  backgroundColor: row.color,
-                }}
-                title={`${row.label}: ${formatRupeesExact(row.amount)} (${Math.round(share)}%)`}
-              />
-            );
-          })}
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {ranked.map((row) => {
-            const share = grandTotal > 0 ? Math.round((row.amount / grandTotal) * 100) : 0;
-            return (
-              <div
-                key={`legend-${row.key}`}
-                className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2"
-              >
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: row.color }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-slate-800 truncate">{row.label}</p>
-                  <p className="text-[11px] text-slate-500">{share}%</p>
-                </div>
-                <p className="text-sm font-bold tabular-nums text-slate-900">{formatRupeesExact(row.amount)}</p>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="divide-y divide-slate-100">
-        {ranked.map((row, index) => {
-          const share = grandTotal > 0 ? Math.round((row.amount / grandTotal) * 100) : 0;
-          return (
-            <div key={row.key} className="flex flex-wrap items-center gap-4 px-6 py-4 md:px-8">
-              <span className="w-8 text-sm font-semibold tabular-nums text-slate-400">
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <span
-                className="h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: row.color }}
-              />
-              <div className="min-w-[140px] flex-1">
-                <p className="font-semibold text-slate-800">Total collection by {row.label}</p>
-                <p className="text-xs text-slate-500">
-                  {row.collectors} collector{row.collectors === 1 ? '' : 's'}
-                  {row.names.length ? ` — ${row.names.join(', ')}` : ''}
-                </p>
-              </div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{share}%</p>
-              <p className="w-36 text-right text-lg font-bold tabular-nums text-slate-900">
-                {formatRupeesExact(row.amount)}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function BlockCollectionHero({ collector, blockRows, onOpenTransactions }) {
-  const total = Number(collector.totalAmount) || 0;
-  const prefix = `ic-${String(collector.email || collector.name || 'collector').replace(/[^a-z0-9]/gi, '')}`;
-
-  return (
-    <CollectionChartHero
-      title="Collection by block"
-      subtitle={collector.name}
-      totalLabel="Combined total"
-      total={total}
-      blockRows={blockRows}
-      prefix={prefix}
-      onOpenTransactions={onOpenTransactions}
-    />
-  );
-}
-
-function CollectorsList({ collectors, selectedEmail, onSelect }) {
-  return (
-    <div className="glass-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100">
-        <h3 className="text-lg font-semibold text-slate-800">Collectors</h3>
-        <p className="text-xs text-slate-500 mt-0.5">Select a collector to see block-wise totals.</p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wider">
-            <tr>
-              <th className="px-5 py-3 font-semibold">Name</th>
-              <th className="px-5 py-3 font-semibold">Collection block</th>
-              <th className="px-5 py-3 font-semibold">Total collected</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {collectors.map((collector) => (
-              <tr
-                key={collector.email}
-                onClick={() => onSelect(collector.email)}
-                className={`cursor-pointer transition hover:bg-blue-50/70 ${
-                  selectedEmail === collector.email ? 'bg-blue-50' : ''
-                }`}
-              >
-                <td className="px-5 py-3.5 font-semibold text-slate-900">{collector.name}</td>
-                <td className="px-5 py-3.5">
-                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
-                    {blockPhrase(collector.collectionBlock) || '—'}
-                  </span>
-                </td>
-                <td className="px-5 py-3.5 font-semibold text-blue-700">{formatRupeesExact(collector.totalAmount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
@@ -340,11 +42,290 @@ function formatTxnDate(value) {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB');
 }
 
-function CollectorTransactionsModal({ collector, viewerEmail, onClose }) {
+function groupCollectorsByBlock(collectors) {
+  return FORM_BLOCK_OPTIONS.map((block) => {
+    const members = collectors.filter(
+      (c) => String(c.collectionBlock || '').trim().toLowerCase() === String(block).toLowerCase()
+    );
+    const amount = members.reduce((sum, c) => sum + (Number(c.totalAmount) || 0), 0);
+    return {
+      key: block,
+      name: blockPhrase(block),
+      amount,
+      collectors: members.length,
+      members,
+      color: BLOCK_COLORS[block] || '#2563eb',
+    };
+  }).filter((row) => row.collectors > 0 || row.amount > 0);
+}
+
+function TransactionCards({ rows }) {
+  if (rows.length === 0) {
+    return <p className="px-5 py-4 text-sm text-slate-500">No transactions for this collector.</p>;
+  }
+  return (
+    <>
+      <div className="lg:hidden space-y-3 p-4">
+        {rows.map((row, index) => (
+          <div key={`${row.receipt_no || index}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900 break-words">{row.name || '—'}</p>
+                <p className="text-sm text-slate-500 mt-0.5">House {row.houseno || '—'}</p>
+              </div>
+              <p className="shrink-0 font-semibold text-blue-600">{formatRupeesExact(row.amount)}</p>
+            </div>
+            <div className="mt-2 space-y-1 text-xs text-slate-500">
+              <p>{blockPhrase(row.block) || row.block || '—'} · {row.payment_mode || '—'}</p>
+              <p className="break-all">Receipt {row.receipt_no || '—'}</p>
+              <p className="break-all">Ref. {row.reference_receipt_no || '—'}</p>
+              <p>{formatTxnDate(row.createdat)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="hidden lg:block overflow-x-auto">
+        <table className="w-full text-sm text-left">
+          <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wider">
+            <tr>
+              <th className="px-5 py-3 font-semibold">Date</th>
+              <th className="px-5 py-3 font-semibold">House</th>
+              <th className="px-5 py-3 font-semibold">Name</th>
+              <th className="px-5 py-3 font-semibold">Block</th>
+              <th className="px-5 py-3 font-semibold">Amount</th>
+              <th className="px-5 py-3 font-semibold">Mode</th>
+              <th className="px-5 py-3 font-semibold">Receipt</th>
+              <th className="px-5 py-3 font-semibold">Ref.</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((row, index) => (
+              <tr key={`${row.receipt_no || index}-${index}`} className="hover:bg-blue-50/60">
+                <td className="px-5 py-3.5 text-slate-600">{formatTxnDate(row.createdat)}</td>
+                <td className="px-5 py-3.5 text-slate-800">{row.houseno || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-800">{row.name || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{blockLabel(row.block) || row.block || '—'}</td>
+                <td className="px-5 py-3.5 font-semibold text-blue-700">{formatRupeesExact(row.amount)}</td>
+                <td className="px-5 py-3.5 text-slate-600">{row.payment_mode || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-800">{row.receipt_no || '—'}</td>
+                <td className="px-5 py-3.5 text-slate-600">{row.reference_receipt_no || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function BlockCollectorsModal({ blockRow, viewerEmail, onClose }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+
+  const emails = useMemo(
+    () => (blockRow.members || []).map((m) => m.email).filter(Boolean),
+    [blockRow.members]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const { data } = await axios.get(`${API_BASE_URL}/api/individual-collections/block-transactions`, {
+          params: { viewer: viewerEmail || '', emails: JSON.stringify(emails) },
+        });
+        if (!cancelled) setRows(Array.isArray(data?.transactions) ? data.transactions : []);
+      } catch (err) {
+        if (!cancelled) setError(err.response?.data?.error || 'Could not load transactions.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [emails, viewerEmail]);
+
+  const q = search.trim().toLowerCase();
+  const grouped = useMemo(() => {
+    const byEmail = {};
+    for (const member of blockRow.members || []) {
+      const email = String(member.email || '').toLowerCase();
+      byEmail[email] = { member, rows: [] };
+    }
+    for (const row of rows) {
+      const email = String(row.collector_email || '').toLowerCase();
+      if (!byEmail[email]) {
+        byEmail[email] = { member: { name: email, email }, rows: [] };
+      }
+      byEmail[email].rows.push(row);
+    }
+    return Object.values(byEmail).map((group) => {
+      const filtered = group.rows.filter((row) => {
+        if (!q) return true;
+        return [
+          row.houseno,
+          row.name,
+          row.contact,
+          row.block,
+          row.receipt_no,
+          row.reference_receipt_no,
+          row.payment_mode,
+          group.member?.name,
+        ].some((v) => String(v || '').toLowerCase().includes(q));
+      });
+      const total = filtered.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+      return { ...group, rows: filtered, total };
+    }).filter((group) => !q || group.rows.length > 0);
+  }, [blockRow.members, rows, q]);
+
+  const grandTotal = grouped.reduce((sum, g) => sum + g.total, 0);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 animate-fadeIn flex flex-col">
+        <div className="px-4 sm:px-6 pt-5 pb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-blue-100">Block collections</p>
+              <h3 className="text-xl font-bold mt-1">{blockRow.name}</h3>
+              <p className="text-sm text-blue-100 mt-1">
+                {blockRow.collectors} collector{blockRow.collectors === 1 ? '' : 's'} · click a name section to review their receipts
+              </p>
+            </div>
+            <p className="text-2xl font-bold tabular-nums">{formatRupeesExact(grandTotal)}</p>
+          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search house, name, receipt or collector…"
+            className="mt-4 w-full h-12 rounded-xl bg-white/95 border-0 px-4 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-white/60"
+          />
+        </div>
+
+        <div className="overflow-auto flex-1">
+          {loading ? (
+            <div className="p-10 flex items-center justify-center">
+              <span className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : error ? (
+            <p className="p-8 text-center text-rose-600">{error}</p>
+          ) : grouped.length === 0 ? (
+            <p className="p-8 text-center text-slate-500">No transactions found for this block.</p>
+          ) : (
+            grouped.map((group) => (
+              <section key={group.member.email || group.member.name} className="border-b border-slate-100 last:border-b-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-5 py-3">
+                  <div>
+                    <h4 className="text-base font-bold text-slate-900">{group.member.name}</h4>
+                    <p className="text-xs text-slate-500">{group.rows.length} transaction{group.rows.length === 1 ? '' : 's'}</p>
+                  </div>
+                  <p className="text-lg font-bold text-blue-700">{formatRupeesExact(group.total)}</p>
+                </div>
+                <TransactionCards rows={group.rows} />
+              </section>
+            ))
+          )}
+        </div>
+
+        <div className="p-4 bg-slate-50 border-t border-slate-100">
+          <button type="button" className="btn-neon w-full" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminBlockOverview({ collectors, onOpenBlock }) {
+  const grouped = useMemo(() => groupCollectorsByBlock(collectors), [collectors]);
+  const ranked = useMemo(() => [...grouped].sort((a, b) => b.amount - a.amount), [grouped]);
+  const pieData = ranked.filter((row) => row.amount > 0);
+  const grandTotal = ranked.reduce((sum, row) => sum + row.amount, 0);
+
+  if (ranked.length === 0) return null;
+
+  return (
+    <div className="space-y-6">
+      <div className="glass-card overflow-hidden">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/70 px-5 py-5 md:px-8">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-blue-500/80">Distribution</p>
+            <h3 className="mt-1 text-xl md:text-2xl font-semibold text-slate-800">Block-wise total collection</h3>
+            <p className="mt-1 text-xs text-slate-500">Share of each collection block across all named collectors.</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] uppercase tracking-widest text-slate-400">Combined total</p>
+            <p className="text-2xl md:text-3xl font-bold neon-text">{formatRupeesExact(grandTotal)}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-2 p-4 md:p-6">
+          <div className="lg:col-span-3 relative min-h-[300px]">
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="amount"
+                  nameKey="name"
+                  innerRadius="54%"
+                  outerRadius="82%"
+                  paddingAngle={pieData.length > 1 ? 4 : 0}
+                  cornerRadius={8}
+                  stroke="none"
+                  onClick={(_, index) => {
+                    const row = pieData[index];
+                    if (row) onOpenBlock(row);
+                  }}
+                >
+                  {pieData.map((entry) => (
+                    <Cell key={entry.key} fill={entry.color} className="cursor-pointer outline-none" />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Blocks</span>
+              <span className="text-2xl font-bold text-slate-800">{pieData.length}</span>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 flex flex-col justify-center gap-2">
+            {ranked.map((row) => {
+              const share = grandTotal > 0 ? Math.round((row.amount / grandTotal) * 100) : 0;
+              return (
+                <button
+                  key={row.key}
+                  type="button"
+                  onClick={() => onOpenBlock(row)}
+                  className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-white hover:shadow-sm"
+                >
+                  <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: row.color }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800">{row.name}</p>
+                    <p className="text-[11px] text-slate-500">{share}% · {row.collectors} collector{row.collectors === 1 ? '' : 's'}</p>
+                  </div>
+                  <p className="text-sm font-bold tabular-nums text-slate-900">{formatRupeesExact(row.amount)}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollectorTransactionsPanel({ collector, viewerEmail }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -366,145 +347,37 @@ function CollectorTransactionsModal({ collector, viewerEmail, onClose }) {
     return () => { cancelled = true; };
   }, [collector.email, viewerEmail]);
 
-  const q = search.trim().toLowerCase();
-  const filtered = rows.filter((row) => {
-    if (!q) return true;
-    return [
-      row.houseno,
-      row.name,
-      row.contact,
-      row.block,
-      row.receipt_no,
-      row.reference_receipt_no,
-      row.payment_mode,
-    ].some((v) => String(v || '').toLowerCase().includes(q));
-  });
-  const total = filtered.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
-
   return (
-    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4">
-      <div className="w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 animate-fadeIn flex flex-col">
-        <div className="px-4 sm:px-6 pt-5 pb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-blue-100">Collector transactions</p>
-              <h3 className="text-xl font-bold mt-1 break-words">{collector.name}</h3>
-              <p className="text-sm text-blue-100 mt-1">
-                {blockPhrase(collector.collectionBlock) || 'Collection'} · {filtered.length} transaction{filtered.length === 1 ? '' : 's'}
-              </p>
-            </div>
-            <p className="text-2xl font-bold tabular-nums">{formatRupeesExact(total)}</p>
-          </div>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search house, name, receipt or contact…"
-            className="mt-4 w-full h-12 rounded-xl bg-white/95 border-0 px-4 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-white/60"
-          />
-        </div>
-
-        <div className="overflow-auto flex-1">
-          {loading ? (
-            <div className="p-10 flex items-center justify-center">
-              <span className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : error ? (
-            <p className="p-8 text-center text-rose-600">{error}</p>
-          ) : filtered.length === 0 ? (
-            <p className="p-8 text-center text-slate-500">No transactions found for this collector.</p>
-          ) : (
-            <>
-              <div className="lg:hidden space-y-3 p-4">
-                {filtered.map((row, index) => (
-                  <div key={`${row.receipt_no || index}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-900 break-words">{row.name || '—'}</p>
-                        <p className="text-sm text-slate-500 mt-0.5">House {row.houseno || '—'}</p>
-                      </div>
-                      <p className="shrink-0 font-semibold text-blue-600">{formatRupeesExact(row.amount)}</p>
-                    </div>
-                    <div className="mt-2 space-y-1 text-xs text-slate-500">
-                      <p>{blockPhrase(row.block) || row.block || '—'} · {row.payment_mode || '—'}</p>
-                      <p className="break-all">Receipt {row.receipt_no || '—'}</p>
-                      <p className="break-all">Ref. {row.reference_receipt_no || '—'}</p>
-                      <p>{formatTxnDate(row.createdat)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="hidden lg:block overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wider">
-                    <tr>
-                      <th className="px-5 py-3 font-semibold">Date</th>
-                      <th className="px-5 py-3 font-semibold">House</th>
-                      <th className="px-5 py-3 font-semibold">Name</th>
-                      <th className="px-5 py-3 font-semibold">Block</th>
-                      <th className="px-5 py-3 font-semibold">Amount</th>
-                      <th className="px-5 py-3 font-semibold">Mode</th>
-                      <th className="px-5 py-3 font-semibold">Receipt</th>
-                      <th className="px-5 py-3 font-semibold">Ref.</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filtered.map((row, index) => (
-                      <tr key={`${row.receipt_no || index}-${index}`} className="hover:bg-blue-50/60">
-                        <td className="px-5 py-3.5 text-slate-600">{formatTxnDate(row.createdat)}</td>
-                        <td className="px-5 py-3.5 text-slate-800">{row.houseno || '—'}</td>
-                        <td className="px-5 py-3.5 text-slate-800">{row.name || '—'}</td>
-                        <td className="px-5 py-3.5 text-slate-600">{blockLabel(row.block) || row.block || '—'}</td>
-                        <td className="px-5 py-3.5 font-semibold text-blue-700">{formatRupeesExact(row.amount)}</td>
-                        <td className="px-5 py-3.5 text-slate-600">{row.payment_mode || '—'}</td>
-                        <td className="px-5 py-3.5 text-slate-800">{row.receipt_no || '—'}</td>
-                        <td className="px-5 py-3.5 text-slate-600">{row.reference_receipt_no || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="p-4 bg-slate-50 border-t border-slate-100">
-          <button type="button" className="btn-neon w-full" onClick={onClose}>
-            Close
-          </button>
-        </div>
+    <div className="glass-card overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-100">
+        <h3 className="text-lg font-semibold text-slate-800">Your collected transactions</h3>
+        <p className="text-xs text-slate-500 mt-0.5">Every collected or completed receipt recorded under this login.</p>
       </div>
+      {loading ? (
+        <div className="p-10 flex items-center justify-center">
+          <span className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <p className="p-8 text-center text-rose-600">{error}</p>
+      ) : (
+        <TransactionCards rows={rows} />
+      )}
     </div>
   );
 }
 
-function CollectorSummary({ collector, collectorsPanel, onOpenTransactions }) {
+function NonAdminSummary({ collector, viewerEmail }) {
   const total = Number(collector.totalAmount) || 0;
   const blockRows = (collector.byBlock || []).map((row) => {
     const amount = Number(row.amount) || 0;
     return {
       name: blockLabel(row.block) || row.block,
       amount,
-      share: total > 0 ? Math.round((amount / total) * 100) : 0,
     };
   });
 
   return (
     <div className="space-y-6">
-      {blockRows.length > 0 ? (
-        <BlockCollectionHero
-          collector={collector}
-          blockRows={blockRows}
-          onOpenTransactions={onOpenTransactions}
-        />
-      ) : (
-        <div className="glass-card px-5 py-8 text-center text-slate-500">
-          No collected payments recorded for this login yet.
-        </div>
-      )}
-
-      {collectorsPanel}
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="glass-card px-5 py-4">
           <p className="text-[11px] uppercase tracking-widest text-slate-400">Name</p>
@@ -516,16 +389,10 @@ function CollectorSummary({ collector, collectorsPanel, onOpenTransactions }) {
             {blockPhrase(collector.collectionBlock) || '—'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onOpenTransactions}
-          className="glass-card px-5 py-4 text-left transition hover:ring-2 hover:ring-blue-300"
-          title="View all transactions"
-        >
+        <div className="glass-card px-5 py-4">
           <p className="text-[11px] uppercase tracking-widest text-slate-400">Total collected</p>
           <p className="mt-1 text-2xl font-bold text-blue-700">{formatRupeesExact(total)}</p>
-          <p className="mt-1 text-[11px] font-semibold text-blue-500">View transactions</p>
-        </button>
+        </div>
       </div>
 
       <div className="glass-card overflow-hidden">
@@ -566,6 +433,8 @@ function CollectorSummary({ collector, collectorsPanel, onOpenTransactions }) {
           </table>
         </div>
       </div>
+
+      <CollectorTransactionsPanel collector={collector} viewerEmail={viewerEmail} />
     </div>
   );
 }
@@ -573,10 +442,9 @@ function CollectorSummary({ collector, collectorsPanel, onOpenTransactions }) {
 export default function IndividualCollection({ user }) {
   const [collectors, setCollectors] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [selectedEmail, setSelectedEmail] = useState('');
-  const [txnCollector, setTxnCollector] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [blockModal, setBlockModal] = useState(null);
 
   const loadCollectors = useCallback(async () => {
     setLoading(true);
@@ -588,10 +456,6 @@ export default function IndividualCollection({ user }) {
       const list = Array.isArray(data?.collectors) ? data.collectors : [];
       setCollectors(list);
       setIsAdmin(Boolean(data?.isAdmin));
-      setSelectedEmail((prev) => {
-        if (prev && list.some((c) => c.email === prev)) return prev;
-        return list[0]?.email || '';
-      });
     } catch (err) {
       console.error('Failed to load individual collections:', err);
       setError('Could not load individual collections.');
@@ -605,10 +469,7 @@ export default function IndividualCollection({ user }) {
     loadCollectors();
   }, [loadCollectors]);
 
-  const selected = useMemo(
-    () => collectors.find((c) => c.email === selectedEmail) || collectors[0] || null,
-    [collectors, selectedEmail]
-  );
+  const self = collectors[0] || null;
 
   return (
     <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
@@ -620,8 +481,8 @@ export default function IndividualCollection({ user }) {
         <h1 className="mt-2 text-3xl md:text-4xl font-bold tracking-tight neon-text">Individual Collection</h1>
         <p className="mt-2 text-sm text-slate-500">
           {isAdmin
-            ? 'Admin view of each collector’s name, collection block, and totals from every block they collected in.'
-            : 'Your name, collection block, amount from each block you collected in, and combined total.'}
+            ? 'Block-wise totals across collectors. Open a block to review each person’s transactions.'
+            : 'Your name, collection block, totals, and the transactions you have collected.'}
         </p>
         <div className="mx-auto mt-4 h-[2px] w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
       </div>
@@ -632,35 +493,27 @@ export default function IndividualCollection({ user }) {
         </div>
       ) : error ? (
         <div className="glass-card p-8 text-center text-rose-600">{error}</div>
-      ) : !selected ? (
+      ) : isAdmin ? (
+        collectors.length === 0 ? (
+          <div className="glass-card p-8 text-center text-slate-500">
+            No collector records yet.
+          </div>
+        ) : (
+          <AdminBlockOverview collectors={collectors} onOpenBlock={setBlockModal} />
+        )
+      ) : !self ? (
         <div className="glass-card p-8 text-center text-slate-500">
           No collection record for this login yet. Add a name and collection block on the user, then save payments while logged in.
         </div>
       ) : (
-        <div className="relative space-y-6">
-          {isAdmin && <AdminBlockTotals collectors={collectors} />}
-
-          <CollectorSummary
-            collector={selected}
-            onOpenTransactions={() => setTxnCollector(selected)}
-            collectorsPanel={
-              isAdmin && collectors.length > 1 ? (
-                <CollectorsList
-                  collectors={collectors}
-                  selectedEmail={selectedEmail}
-                  onSelect={setSelectedEmail}
-                />
-              ) : null
-            }
-          />
-        </div>
+        <NonAdminSummary collector={self} viewerEmail={user} />
       )}
 
-      {txnCollector && (
-        <CollectorTransactionsModal
-          collector={txnCollector}
+      {blockModal && (
+        <BlockCollectorsModal
+          blockRow={blockModal}
           viewerEmail={user}
-          onClose={() => setTxnCollector(null)}
+          onClose={() => setBlockModal(null)}
         />
       )}
     </div>
