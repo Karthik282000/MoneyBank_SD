@@ -244,7 +244,7 @@ function MemberStatusFlags({ member }) {
   );
 }
 
-function Home({ allowedBlocks = [] }) {
+function Home({ allowedBlocks = [], user = '' }) {
   const navigate = useNavigate();
   const [statusData, setStatusData] = useState([]);
   const [blockOverview, setBlockOverview] = useState([]);
@@ -269,6 +269,7 @@ function Home({ allowedBlocks = [] }) {
 
   const [showDue, setShowDue] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
+  const [houseScope, setHouseScope] = useState('all');
   const [editReceipt, setEditReceipt] = useState(null);
   const [editForm, setEditForm] = useState({
     referenceReceiptNo: '',
@@ -367,7 +368,9 @@ function Home({ allowedBlocks = [] }) {
 
   const fetchDashboardData = useCallback(() => {
     axios.post(`${API_BASE_URL}/api/dashboard/summary`, {
-      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS']
+      allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS'],
+      houseScope,
+      addedByEmail: user || sessionStorage.getItem('user') || '',
     })
       .then(res => {
         const data = res.data || {};
@@ -386,7 +389,7 @@ function Home({ allowedBlocks = [] }) {
         setDueHouseList([]);
         setBlockOverview([]);
       });
-  }, [allowedBlocks]);  // ✅ IMPORTANT DEPENDENCY
+  }, [allowedBlocks, houseScope, user]);
 
 
   const fetchConfig = async () => {
@@ -463,6 +466,59 @@ function Home({ allowedBlocks = [] }) {
           Dashboard Overview
         </h2>
         <div className="mx-auto mt-3 sm:mt-4 h-[2px] w-28 sm:w-40 rounded-full bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+      </div>
+
+      <div className="relative mb-4 sm:mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-[0_12px_40px_-18px_rgba(37,99,235,0.28)]">
+        <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-400" />
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-4 py-4 sm:px-6 sm:py-5">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md sm:flex">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5 12 3l9 7.5V20a1.5 1.5 0 0 1-1.5 1.5h-5.25V15h-4.5v6.5H4.5A1.5 1.5 0 0 1 3 20V10.5Z" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.22em] text-blue-600 font-semibold">House filter</p>
+              <p className="mt-1 text-sm font-semibold text-slate-800">
+                {houseScope === 'mine' ? 'Showing houses added by you' : 'Showing all houses in your blocks'}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Block access stays the same. Switch the view to refresh totals, completed, due, and pending.
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full lg:w-auto">
+            <div
+              role="group"
+              aria-label="House filter"
+              className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80"
+            >
+              <button
+                type="button"
+                onClick={() => setHouseScope('all')}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                  houseScope === 'all'
+                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                All houses
+              </button>
+              <button
+                type="button"
+                onClick={() => setHouseScope('mine')}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                  houseScope === 'mine'
+                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-100'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Added by you
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* OVERVIEW */}

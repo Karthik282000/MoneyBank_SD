@@ -49,7 +49,7 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-function CollectionChartHero({ title, subtitle, totalLabel, total, blockRows, prefix }) {
+function CollectionChartHero({ title, subtitle, totalLabel, total, blockRows, prefix, onOpenTransactions }) {
   return (
     <div className="glass-card overflow-hidden">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/70 px-5 py-4 md:px-8">
@@ -57,10 +57,18 @@ function CollectionChartHero({ title, subtitle, totalLabel, total, blockRows, pr
           <p className="text-[11px] uppercase tracking-[0.28em] text-blue-500/80">{title}</p>
           <h3 className="mt-1 text-xl md:text-2xl font-semibold text-slate-800">{subtitle}</h3>
         </div>
-        <div className="text-right">
+        <button
+          type="button"
+          onClick={onOpenTransactions}
+          className="text-right rounded-2xl px-3 py-2 -mr-1 transition hover:bg-white/80 focus:outline-none focus:ring-2 focus:ring-blue-400/40"
+          title="View all transactions"
+        >
           <p className="text-[11px] uppercase tracking-widest text-slate-400">{totalLabel}</p>
           <p className="text-2xl md:text-3xl font-bold neon-text">{formatRupeesExact(total)}</p>
-        </div>
+          {onOpenTransactions && (
+            <p className="mt-1 text-[11px] font-semibold text-blue-500">View transactions</p>
+          )}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-2 p-4 md:p-6">
@@ -196,30 +204,44 @@ function AdminBlockTotals({ collectors }) {
           <p className="text-3xl font-bold tabular-nums text-slate-900">{formatRupeesExact(grandTotal)}</p>
         </div>
 
-        <div className="mt-6 h-14 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/80">
-          <div className="flex h-full w-full">
-            {ranked.map((row) => {
-              const share = grandTotal > 0 ? (row.amount / grandTotal) * 100 : 0;
-              if (share <= 0) return null;
-              return (
-                <div
-                  key={row.key}
-                  className="relative flex h-full items-center justify-center text-white"
-                  style={{
-                    width: `${Math.max(share, 8)}%`,
-                    backgroundColor: row.color,
-                  }}
-                  title={`${row.label}: ${formatRupeesExact(row.amount)}`}
-                >
-                  {share >= 12 && (
-                    <span className="text-xs font-semibold tracking-wide">
-                      {row.label} {Math.round(share)}%
-                    </span>
-                  )}
+        <div className="mt-6 flex h-4 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/80">
+          {ranked.map((row) => {
+            const share = grandTotal > 0 ? (row.amount / grandTotal) * 100 : 0;
+            if (share <= 0) return null;
+            return (
+              <div
+                key={row.key}
+                className="h-full"
+                style={{
+                  width: `${share}%`,
+                  backgroundColor: row.color,
+                }}
+                title={`${row.label}: ${formatRupeesExact(row.amount)} (${Math.round(share)}%)`}
+              />
+            );
+          })}
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {ranked.map((row) => {
+            const share = grandTotal > 0 ? Math.round((row.amount / grandTotal) * 100) : 0;
+            return (
+              <div
+                key={`legend-${row.key}`}
+                className="flex items-center gap-2.5 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2"
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: row.color }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{row.label}</p>
+                  <p className="text-[11px] text-slate-500">{share}%</p>
                 </div>
-              );
-            })}
-          </div>
+                <p className="text-sm font-bold tabular-nums text-slate-900">{formatRupeesExact(row.amount)}</p>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -254,7 +276,7 @@ function AdminBlockTotals({ collectors }) {
   );
 }
 
-function BlockCollectionHero({ collector, blockRows }) {
+function BlockCollectionHero({ collector, blockRows, onOpenTransactions }) {
   const total = Number(collector.totalAmount) || 0;
   const prefix = `ic-${String(collector.email || collector.name || 'collector').replace(/[^a-z0-9]/gi, '')}`;
 
@@ -266,6 +288,7 @@ function BlockCollectionHero({ collector, blockRows }) {
       total={total}
       blockRows={blockRows}
       prefix={prefix}
+      onOpenTransactions={onOpenTransactions}
     />
   );
 }
@@ -311,7 +334,151 @@ function CollectorsList({ collectors, selectedEmail, onSelect }) {
   );
 }
 
-function CollectorSummary({ collector, collectorsPanel }) {
+function formatTxnDate(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB');
+}
+
+function CollectorTransactionsModal({ collector, viewerEmail, onClose }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const { data } = await axios.get(`${API_BASE_URL}/api/individual-collections/transactions`, {
+          params: { email: collector.email, viewer: viewerEmail || '' },
+        });
+        if (!cancelled) setRows(Array.isArray(data?.transactions) ? data.transactions : []);
+      } catch (err) {
+        if (!cancelled) setError(err.response?.data?.error || 'Could not load transactions.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [collector.email, viewerEmail]);
+
+  const q = search.trim().toLowerCase();
+  const filtered = rows.filter((row) => {
+    if (!q) return true;
+    return [
+      row.houseno,
+      row.name,
+      row.contact,
+      row.block,
+      row.receipt_no,
+      row.reference_receipt_no,
+      row.payment_mode,
+    ].some((v) => String(v || '').toLowerCase().includes(q));
+  });
+  const total = filtered.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4">
+      <div className="w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-t-2xl sm:rounded-2xl bg-white shadow-[0_20px_60px_-10px_rgba(37,99,235,0.4)] ring-1 ring-blue-200 animate-fadeIn flex flex-col">
+        <div className="px-4 sm:px-6 pt-5 pb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.2em] font-semibold text-blue-100">Collector transactions</p>
+              <h3 className="text-xl font-bold mt-1 break-words">{collector.name}</h3>
+              <p className="text-sm text-blue-100 mt-1">
+                {blockPhrase(collector.collectionBlock) || 'Collection'} · {filtered.length} transaction{filtered.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <p className="text-2xl font-bold tabular-nums">{formatRupeesExact(total)}</p>
+          </div>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search house, name, receipt or contact…"
+            className="mt-4 w-full h-12 rounded-xl bg-white/95 border-0 px-4 text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-white/60"
+          />
+        </div>
+
+        <div className="overflow-auto flex-1">
+          {loading ? (
+            <div className="p-10 flex items-center justify-center">
+              <span className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : error ? (
+            <p className="p-8 text-center text-rose-600">{error}</p>
+          ) : filtered.length === 0 ? (
+            <p className="p-8 text-center text-slate-500">No transactions found for this collector.</p>
+          ) : (
+            <>
+              <div className="lg:hidden space-y-3 p-4">
+                {filtered.map((row, index) => (
+                  <div key={`${row.receipt_no || index}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 break-words">{row.name || '—'}</p>
+                        <p className="text-sm text-slate-500 mt-0.5">House {row.houseno || '—'}</p>
+                      </div>
+                      <p className="shrink-0 font-semibold text-blue-600">{formatRupeesExact(row.amount)}</p>
+                    </div>
+                    <div className="mt-2 space-y-1 text-xs text-slate-500">
+                      <p>{blockPhrase(row.block) || row.block || '—'} · {row.payment_mode || '—'}</p>
+                      <p className="break-all">Receipt {row.receipt_no || '—'}</p>
+                      <p className="break-all">Ref. {row.reference_receipt_no || '—'}</p>
+                      <p>{formatTxnDate(row.createdat)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">Date</th>
+                      <th className="px-5 py-3 font-semibold">House</th>
+                      <th className="px-5 py-3 font-semibold">Name</th>
+                      <th className="px-5 py-3 font-semibold">Block</th>
+                      <th className="px-5 py-3 font-semibold">Amount</th>
+                      <th className="px-5 py-3 font-semibold">Mode</th>
+                      <th className="px-5 py-3 font-semibold">Receipt</th>
+                      <th className="px-5 py-3 font-semibold">Ref.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((row, index) => (
+                      <tr key={`${row.receipt_no || index}-${index}`} className="hover:bg-blue-50/60">
+                        <td className="px-5 py-3.5 text-slate-600">{formatTxnDate(row.createdat)}</td>
+                        <td className="px-5 py-3.5 text-slate-800">{row.houseno || '—'}</td>
+                        <td className="px-5 py-3.5 text-slate-800">{row.name || '—'}</td>
+                        <td className="px-5 py-3.5 text-slate-600">{blockLabel(row.block) || row.block || '—'}</td>
+                        <td className="px-5 py-3.5 font-semibold text-blue-700">{formatRupeesExact(row.amount)}</td>
+                        <td className="px-5 py-3.5 text-slate-600">{row.payment_mode || '—'}</td>
+                        <td className="px-5 py-3.5 text-slate-800">{row.receipt_no || '—'}</td>
+                        <td className="px-5 py-3.5 text-slate-600">{row.reference_receipt_no || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="p-4 bg-slate-50 border-t border-slate-100">
+          <button type="button" className="btn-neon w-full" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollectorSummary({ collector, collectorsPanel, onOpenTransactions }) {
   const total = Number(collector.totalAmount) || 0;
   const blockRows = (collector.byBlock || []).map((row) => {
     const amount = Number(row.amount) || 0;
@@ -325,7 +492,11 @@ function CollectorSummary({ collector, collectorsPanel }) {
   return (
     <div className="space-y-6">
       {blockRows.length > 0 ? (
-        <BlockCollectionHero collector={collector} blockRows={blockRows} />
+        <BlockCollectionHero
+          collector={collector}
+          blockRows={blockRows}
+          onOpenTransactions={onOpenTransactions}
+        />
       ) : (
         <div className="glass-card px-5 py-8 text-center text-slate-500">
           No collected payments recorded for this login yet.
@@ -345,10 +516,16 @@ function CollectorSummary({ collector, collectorsPanel }) {
             {blockPhrase(collector.collectionBlock) || '—'}
           </p>
         </div>
-        <div className="glass-card px-5 py-4">
+        <button
+          type="button"
+          onClick={onOpenTransactions}
+          className="glass-card px-5 py-4 text-left transition hover:ring-2 hover:ring-blue-300"
+          title="View all transactions"
+        >
           <p className="text-[11px] uppercase tracking-widest text-slate-400">Total collected</p>
           <p className="mt-1 text-2xl font-bold text-blue-700">{formatRupeesExact(total)}</p>
-        </div>
+          <p className="mt-1 text-[11px] font-semibold text-blue-500">View transactions</p>
+        </button>
       </div>
 
       <div className="glass-card overflow-hidden">
@@ -397,6 +574,7 @@ export default function IndividualCollection({ user }) {
   const [collectors, setCollectors] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState('');
+  const [txnCollector, setTxnCollector] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -464,6 +642,7 @@ export default function IndividualCollection({ user }) {
 
           <CollectorSummary
             collector={selected}
+            onOpenTransactions={() => setTxnCollector(selected)}
             collectorsPanel={
               isAdmin && collectors.length > 1 ? (
                 <CollectorsList
@@ -475,6 +654,14 @@ export default function IndividualCollection({ user }) {
             }
           />
         </div>
+      )}
+
+      {txnCollector && (
+        <CollectorTransactionsModal
+          collector={txnCollector}
+          viewerEmail={user}
+          onClose={() => setTxnCollector(null)}
+        />
       )}
     </div>
   );

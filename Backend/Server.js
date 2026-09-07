@@ -133,6 +133,7 @@ async function ensureReceiptImageColumn() {
     await pool.query(`ALTER TABLE Logincredentials ADD COLUMN IF NOT EXISTS collector_name TEXT`);
     await pool.query(`ALTER TABLE Logincredentials ADD COLUMN IF NOT EXISTS collection_block TEXT`);
     await pool.query(`ALTER TABLE TransactionalDetails ADD COLUMN IF NOT EXISTS collector_email TEXT`);
+    await pool.query(`ALTER TABLE CollectionDetails ADD COLUMN IF NOT EXISTS added_by TEXT`);
     // Due entries may be saved without a payment mode
     try {
       await pool.query(`ALTER TABLE TransactionalDetails ALTER COLUMN modeofpayment DROP NOT NULL`);
@@ -1189,9 +1190,9 @@ app.post('/api/save-transaction', async (req, res) => {
     if (subRes.rows.length === 0) {
       subscriberId = await nextSubscriberId(client);
       const insertRes = await client.query(
-        `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', 0, $7) RETURNING subscriber_id`,
-        [subscriberId, houseNo, name, contact, email || null, block, receiptStatus || 'due']
+        `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, added_by)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', 0, $7, $8) RETURNING subscriber_id`,
+        [subscriberId, houseNo, name, contact, email || null, block, receiptStatus || 'due', collectedBy]
       );
       subscriberId = insertRes.rows[0].subscriber_id;
     } else {
@@ -1327,9 +1328,9 @@ app.post('/api/create-new-house', async (req, res) => {
     await client.query('BEGIN');
     const subscriberId = await nextSubscriberId(client);
     await client.query(
-      `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9)`,
-      [subscriberId, houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '']
+      `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber, added_by)
+       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10)`,
+      [subscriberId, houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '', collectedBy]
     );
     let subRes = await client.query(
       'SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1 AND yearofsubscription = $2',
@@ -1552,7 +1553,9 @@ app.post('/api/search-houses', async (req, res) => {
         NULL::text AS modeofpayment,
         NULL::text AS transaction_reference,
         NULL::text AS bank_name,
-        NULL::date AS transaction_dated
+        NULL::date AS transaction_dated,
+        NULL::timestamp AS createdat,
+        NULL::text AS txn_date
       FROM CollectionDetails c
       WHERE c.state = 'active'
         AND NOT EXISTS (
@@ -1586,7 +1589,12 @@ app.post('/api/search-houses', async (req, res) => {
           NULLIF(TRIM(t.referencenumber), '')
         ) AS transaction_reference,
         t.bank_name,
-        t.transaction_dated
+        t.transaction_dated,
+        t.createdat,
+        COALESCE(
+          t.transaction_dated::text,
+          to_char((t.createdat AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD')
+        ) AS txn_date
       FROM CollectionDetails c
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
@@ -1617,7 +1625,12 @@ app.post('/api/search-houses', async (req, res) => {
           NULLIF(TRIM(t.referencenumber), '')
         ) AS transaction_reference,
         t.bank_name,
-        t.transaction_dated
+        t.transaction_dated,
+        t.createdat,
+        COALESCE(
+          t.transaction_dated::text,
+          to_char((t.createdat AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD')
+        ) AS txn_date
       FROM CollectionDetails c
       JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
       JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
@@ -1851,6 +1864,49 @@ app.get('/api/individual-collections', async (req, res) => {
   } catch (err) {
     console.error('Error fetching individual collections:', err);
     res.status(500).json({ error: 'Failed to fetch individual collections' });
+  }
+});
+
+app.get('/api/individual-collections/transactions', async (req, res) => {
+  try {
+    const viewer = normalizeCollectorEmail(req.query.viewer || req.query.adminEmail);
+    const collector = normalizeCollectorEmail(req.query.email);
+    if (!collector) {
+      return res.status(400).json({ error: 'Collector email is required' });
+    }
+
+    const isAdmin = viewer === 'admin@sdapp.com';
+    if (!isAdmin && viewer && viewer !== collector) {
+      return res.status(403).json({ error: 'Not allowed to view another collector' });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         t.receipt_no,
+         t.reference_receipt_no,
+         t.subscriptionamount AS amount,
+         t.modeofpayment AS payment_mode,
+         t.receiptstatus,
+         t.createdat,
+         t.yearofpayment,
+         t.bhog,
+         c.houseno,
+         c.name,
+         c.contact,
+         c.block
+       FROM TransactionalDetails t
+       JOIN SubscriptionDetails s ON s.subscriptionid = t.subscriptionid
+       JOIN CollectionDetails c ON c.subscriber_id = s.subscriberid
+       WHERE LOWER(TRIM(t.collector_email)) = $1
+         AND LOWER(COALESCE(t.receiptstatus, '')) IN ('collected', 'completed')
+       ORDER BY t.createdat DESC NULLS LAST, t.receipt_no DESC`,
+      [collector]
+    );
+
+    res.json({ transactions: result.rows });
+  } catch (err) {
+    console.error('Error fetching collector transactions:', err);
+    res.status(500).json({ error: 'Failed to fetch collector transactions' });
   }
 });
 
@@ -2145,13 +2201,44 @@ function buildBlockOverview(rows, allowedBlocks) {
   });
 }
 app.post('/api/dashboard/summary', async (req, res) => {
-  const { allowedBlocks } = req.body;
+  const { allowedBlocks, houseScope, addedByEmail } = req.body;
   const scoped =
     allowedBlocks && Array.isArray(allowedBlocks) && !allowedBlocks.includes('ALLBLOCKS');
-  const blockValues = scoped ? [allowedBlocks] : [];
-  const blockClause = (alias) => (scoped ? ` AND ${alias}.block = ANY($1)` : '');
+  const mine = String(houseScope || '') === 'mine';
+  const viewer = normalizeCollectorEmail(addedByEmail);
 
   try {
+    let applyAddedBy = false;
+    if (mine && viewer) {
+      const exists = await pool.query(
+        `SELECT 1
+         FROM CollectionDetails
+         WHERE NULLIF(TRIM(added_by), '') IS NOT NULL
+           AND LOWER(TRIM(added_by)) = $1
+         LIMIT 1`,
+        [viewer]
+      );
+      applyAddedBy = exists.rows.length > 0;
+    }
+
+    const filterValues = [];
+    const filters = [];
+    if (scoped) {
+      filterValues.push(allowedBlocks);
+      filters.push({ type: 'block', idx: filterValues.length });
+    }
+    if (applyAddedBy) {
+      filterValues.push(viewer);
+      filters.push({ type: 'added', idx: filterValues.length });
+    }
+    const blockClause = (alias) => filters.map((f) => {
+      if (f.type === 'block') return ` AND ${alias}.block = ANY($${f.idx})`;
+      return ` AND (
+        NULLIF(TRIM(COALESCE(${alias}.added_by, '')), '') IS NULL
+        OR LOWER(TRIM(${alias}.added_by)) = $${f.idx}
+      )`;
+    }).join('');
+
     const [paidRes, pendingRes, modesRes, receiptRes, dueRes, membersRes] = await Promise.all([
       pool.query(
         `SELECT COUNT(DISTINCT c.subscriber_id) AS paid
@@ -2159,7 +2246,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
          JOIN SubscriptionDetails s ON c.subscriber_id = s.subscriberid
          JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
          WHERE c.state = 'active'${blockClause('c')}`,
-        blockValues
+        filterValues
       ),
       pool.query(
         `SELECT COUNT(*) AS pending
@@ -2170,7 +2257,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
              JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
              WHERE s.subscriberid = c.subscriber_id
            )${blockClause('c')}`,
-        blockValues
+        filterValues
       ),
       pool.query(
         `SELECT t.modeofpayment AS mode, COUNT(*) AS count
@@ -2180,7 +2267,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
          WHERE c.state = 'active'
            AND t.modeofpayment IS NOT NULL AND TRIM(t.modeofpayment) <> ''${blockClause('c')}
          GROUP BY t.modeofpayment`,
-        blockValues
+        filterValues
       ),
       pool.query(
         `SELECT
@@ -2189,7 +2276,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
            COALESCE(SUM(CASE WHEN receiptstatus = 'pending' OR receiptstatus IS NULL OR receiptstatus = '' THEN 1 ELSE 0 END), 0) AS pending
          FROM CollectionDetails c
          WHERE c.state = 'active'${blockClause('c')}`,
-        blockValues
+        filterValues
       ),
       pool.query(
         `SELECT
@@ -2210,7 +2297,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
          JOIN TransactionalDetails t ON s.subscriptionid = t.subscriptionid
          WHERE c.state = 'active' AND t.receiptstatus = 'due'${blockClause('c')}
          ORDER BY c.houseno`,
-        blockValues
+        filterValues
       ),
       pool.query(
         `SELECT
@@ -2234,7 +2321,7 @@ app.post('/api/dashboard/summary', async (req, res) => {
          WHERE c.state = 'active'${blockClause('c')}
          GROUP BY c.subscriber_id, c.houseno, c.name, c.contact, c.email, c.block
          ORDER BY c.block, c.houseno`,
-        blockValues
+        filterValues
       ),
     ]);
 

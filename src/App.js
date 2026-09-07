@@ -122,7 +122,7 @@ function App() {
       ) : (
         <DashboardLayout user={loggedInUser} onLogout={handleLogout}>
   <Routes>
-    <Route path="/home" element={<Home allowedBlocks={allowedBlocks} />} />
+    <Route path="/home" element={<Home allowedBlocks={allowedBlocks} user={loggedInUser} />} />
     <Route path="/pay" element={<FormComponent allowedBlocks={allowedBlocks} />} />
     <Route path="/search" element={<SearchPeople allowedBlocks={allowedBlocks} />} />
     <Route path="/individual-collection" element={<IndividualCollection user={loggedInUser} />} />

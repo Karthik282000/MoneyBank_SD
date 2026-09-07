@@ -49,6 +49,47 @@ function matchesPaymentMode(row, selected) {
   return splitModes(row.modeofpayment).some((m) => m.toLowerCase() === want);
 }
 
+function toDateKey(value) {
+  if (value == null || value === '') return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return localYmd(value);
+  }
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return '';
+  return localYmd(d);
+}
+
+function localYmd(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateKey(key) {
+  if (!key) return '—';
+  const [y, m, d] = String(key).split('-');
+  if (!y || !m || !d) return key;
+  return `${d}/${m}/${y}`;
+}
+
+function matchesDateFilter(row, { exactDates, rangeFrom, rangeTo }) {
+  const hasExact = exactDates.length > 0;
+  const hasRange = Boolean(rangeFrom || rangeTo);
+  if (!hasExact && !hasRange) return true;
+  const key = toDateKey(row.txn_date || row.transaction_dated || row.createdat);
+  if (!key) return false;
+  if (hasExact && exactDates.includes(key)) return true;
+  if (hasRange) {
+    const from = rangeFrom || '0000-01-01';
+    const to = rangeTo || '9999-12-31';
+    if (key >= from && key <= to) return true;
+  }
+  return false;
+}
+
 function outsideMark(block) {
   if (!isOutsideBlock(block)) return null;
   return (
@@ -67,6 +108,10 @@ function SearchPeople({ allowedBlocks }) {
   const [receiptStatus, setReceiptStatus] = useState('');
   const [transactionFilter, setTransactionFilter] = useState('');
   const [paymentModeFilter, setPaymentModeFilter] = useState('');
+  const [dateToAdd, setDateToAdd] = useState('');
+  const [exactDates, setExactDates] = useState([]);
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
   const [allData, setAllData] = useState([]);
   const [filteredData, setFilteredData] = useState(null);
   const [totalAmount, setTotalAmount] = useState(0);
@@ -217,6 +262,19 @@ function SearchPeople({ allowedBlocks }) {
     if (paymentModeFilter) {
       data = data.filter(d => matchesPaymentMode(d, paymentModeFilter));
     }
+    if (exactDates.length > 0 || rangeFrom || rangeTo || dateToAdd) {
+      const dates = [...exactDates];
+      const pending = toDateKey(dateToAdd);
+      if (pending && !dates.includes(pending)) dates.push(pending);
+      let from = rangeFrom;
+      let to = rangeTo;
+      if (from && to && from > to) {
+        const swap = from;
+        from = to;
+        to = swap;
+      }
+      data = data.filter(d => matchesDateFilter(d, { exactDates: dates, rangeFrom: from, rangeTo: to }));
+    }
 
     const results = data.map(item => ({
       houseno: item.houseno,
@@ -232,6 +290,8 @@ function SearchPeople({ allowedBlocks }) {
       transactionReference: item.transaction_reference || '',
       bankName: item.bank_name || '',
       transactionDated: item.transaction_dated || '',
+      createdat: item.createdat || '',
+      txn_date: item.txn_date || '',
       has_transaction: hasTxn(item),
     }));
 
@@ -247,6 +307,17 @@ function SearchPeople({ allowedBlocks }) {
     if (results.length === 0) setShowModal(true);
   };
 
+  const addExactDate = () => {
+    const key = toDateKey(dateToAdd);
+    if (!key) return;
+    setExactDates((prev) => (prev.includes(key) ? prev : [...prev, key].sort()));
+    setDateToAdd('');
+  };
+
+  const removeExactDate = (key) => {
+    setExactDates((prev) => prev.filter((d) => d !== key));
+  };
+
   const resetFilters = () => {
     setHouseNo('');
     setName('');
@@ -256,6 +327,10 @@ function SearchPeople({ allowedBlocks }) {
     setReceiptStatus('');
     setTransactionFilter('');
     setPaymentModeFilter('');
+    setDateToAdd('');
+    setExactDates([]);
+    setRangeFrom('');
+    setRangeTo('');
     setFilteredData(null);
     setTotalAmount(0);
     setFilteredSuggestions([]);
@@ -419,6 +494,78 @@ function SearchPeople({ allowedBlocks }) {
           </div>
         </div>
 
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 md:p-5 space-y-4">
+          <div>
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.16em] text-blue-500 font-semibold">Transaction date</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Filter by one date, several dates, a range, or any mix. Use the calendar (6 September is 06/09/2026). Dates follow the transaction date, or the save time in India if that field is empty.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-2">Add date</label>
+              <input
+                type="date"
+                value={dateToAdd}
+                onChange={e => setDateToAdd(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addExactDate();
+                  }
+                }}
+                className="input-neon"
+              />
+            </div>
+            <div>
+              <button type="button" onClick={addExactDate} className="btn-ghost h-12 w-full">
+                Add date
+              </button>
+            </div>
+            <div>
+              <label className="block text-slate-700 font-semibold mb-2">Range from</label>
+              <input
+                type="date"
+                value={rangeFrom}
+                onChange={e => setRangeFrom(e.target.value)}
+                className="input-neon"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-semibold mb-2">Range to</label>
+              <input
+                type="date"
+                value={rangeTo}
+                onChange={e => setRangeTo(e.target.value)}
+                className="input-neon"
+              />
+            </div>
+          </div>
+
+          {(exactDates.length > 0 || rangeFrom || rangeTo) && (
+            <div className="flex flex-wrap gap-2">
+              {exactDates.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => removeExactDate(key)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200 hover:bg-blue-50"
+                  title="Remove date"
+                >
+                  {formatDateKey(key)}
+                  <span aria-hidden="true">×</span>
+                </button>
+              ))}
+              {rangeFrom || rangeTo ? (
+                <span className="inline-flex items-center rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                  Range {formatDateKey(rangeFrom) || '…'} – {formatDateKey(rangeTo) || '…'}
+                </span>
+              ) : null}
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-wrap gap-3 pt-2">
           <button onClick={handleSearch} className="btn-neon" disabled={loading}>
             {loading ? 'Searching…' : 'Search'}
@@ -454,7 +601,7 @@ function SearchPeople({ allowedBlocks }) {
             <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
               <div>
                 <h3 className="text-lg font-semibold text-slate-800">
-                  Search results{selectedBlock ? ` · ${blockPhrase(selectedBlock)}` : ''}{paymentModeFilter ? ` · ${paymentModeFilter}` : ''}
+                  Search results{selectedBlock ? ` · ${blockPhrase(selectedBlock)}` : ''}{paymentModeFilter ? ` · ${paymentModeFilter}` : ''}{(exactDates.length > 0 || rangeFrom || rangeTo || dateToAdd) ? ' · Date filter' : ''}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   {transactionFilter === 'not_done'
@@ -525,7 +672,7 @@ function SearchPeople({ allowedBlocks }) {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-slate-600">
-                        {item.transactionReference || item.bankName || item.transactionDated ? (
+                        {item.transactionReference || item.bankName || item.transactionDated || item.createdat ? (
                           <div className="space-y-0.5 text-xs">
                             {item.transactionReference ? (
                               <p className="break-all">Ref. {item.transactionReference}</p>
@@ -533,8 +680,8 @@ function SearchPeople({ allowedBlocks }) {
                             {item.bankName ? (
                               <p className="break-words">{item.bankName}</p>
                             ) : null}
-                            {item.transactionDated ? (
-                              <p>{new Date(item.transactionDated).toLocaleDateString()}</p>
+                            {item.transactionDated || item.createdat ? (
+                              <p>{new Date(item.transactionDated || item.createdat).toLocaleDateString()}</p>
                             ) : null}
                           </div>
                         ) : (
