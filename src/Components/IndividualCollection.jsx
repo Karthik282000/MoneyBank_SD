@@ -10,6 +10,7 @@ import {
 import { API_BASE_URL } from './Constants.jsx';
 import { FORM_BLOCK_OPTIONS, blockLabel, blockPhrase } from './blockAccess.js';
 import PageLoader from './PageLoader.jsx';
+import ExportButtons from './ExportButtons.jsx';
 
 const BLOCK_COLORS = {
   A: '#2563eb',
@@ -42,6 +43,28 @@ function formatTxnDate(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-GB');
 }
+
+function txnAmount(row) {
+  const n = Number(row.amount);
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
+}
+
+const TXN_EXPORT_COLUMNS = [
+  { header: 'Date', value: (r) => { const v = formatTxnDate(r.createdat); return v === '—' ? '' : v; } },
+  { header: 'House', value: (r) => r.houseno || '' },
+  { header: 'Name', value: (r) => r.name || '' },
+  { header: 'Block', value: (r) => blockLabel(r.block) || r.block || '' },
+  { header: 'Amount', value: txnAmount },
+  { header: 'Mode', value: (r) => r.payment_mode || '' },
+  { header: 'Receipt', value: (r) => r.receipt_no || '' },
+  { header: 'Reference Receipt', value: (r) => r.reference_receipt_no || '' },
+  { header: 'Contact', value: (r) => r.contact || '' },
+];
+
+const ADMIN_TXN_EXPORT_COLUMNS = [
+  { header: 'Collector', value: (r) => r.collector_name || '' },
+  ...TXN_EXPORT_COLUMNS,
+];
 
 function groupCollectorsByBlock(collectors) {
   return FORM_BLOCK_OPTIONS.map((block) => {
@@ -184,6 +207,13 @@ function BlockCollectorsModal({ blockRow, viewerEmail, onClose }) {
   }, [blockRow.members, rows, q]);
 
   const grandTotal = grouped.reduce((sum, g) => sum + g.total, 0);
+  const exportRows = grouped.flatMap((group) =>
+    group.rows.map((row) => ({
+      ...row,
+      collector_name: group.member?.name || group.member?.email || '',
+    }))
+  );
+  const blockKey = String(blockRow.key || blockRow.name || 'block').replace(/\s+/g, '-').toLowerCase();
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-sm p-0 sm:p-4">
@@ -233,8 +263,15 @@ function BlockCollectorsModal({ blockRow, viewerEmail, onClose }) {
           )}
         </div>
 
-        <div className="p-4 bg-slate-50 border-t border-slate-100">
-          <button type="button" className="btn-neon w-full" onClick={onClose}>
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+          <ExportButtons
+            records={exportRows}
+            columns={ADMIN_TXN_EXPORT_COLUMNS}
+            filename={`${blockKey}-collections`}
+            sheetName={String(blockRow.name || 'Block').slice(0, 31)}
+            disabled={loading || !!error || exportRows.length === 0}
+          />
+          <button type="button" className="btn-neon w-full sm:w-auto sm:min-w-[140px] sm:ml-auto" onClick={onClose}>
             Close
           </button>
         </div>
@@ -351,9 +388,18 @@ function CollectorTransactionsPanel({ collector, viewerEmail }) {
   return (
     <div className="glass-card overflow-hidden">
       <PageLoader visible={loading} />
-      <div className="px-5 py-4 border-b border-slate-100">
-        <h3 className="text-lg font-semibold text-slate-800">Your collected transactions</h3>
-        <p className="text-xs text-slate-500 mt-0.5">Every collected or completed receipt recorded under this login.</p>
+      <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Your collected transactions</h3>
+          <p className="text-xs text-slate-500 mt-0.5">Every collected or completed receipt recorded under this login.</p>
+        </div>
+        <ExportButtons
+          records={rows}
+          columns={TXN_EXPORT_COLUMNS}
+          filename="my-collections"
+          sheetName="Collections"
+          disabled={loading || !!error || rows.length === 0}
+        />
       </div>
       {loading ? (
         <div className="p-10 flex items-center justify-center">

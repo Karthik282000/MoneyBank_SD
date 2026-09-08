@@ -4,6 +4,7 @@ import './SearchPeople.css';
 import { API_BASE_URL } from './Constants.jsx';
 import { OUTSIDE_BLOCK, blockLabel, blockPhrase, isOutsideBlock, outsideRowClass } from './blockAccess.js';
 import PageLoader from './PageLoader.jsx';
+import ExportButtons from './ExportButtons.jsx';
 
 function extractYear(value) {
   if (value == null || value === '') return null;
@@ -359,6 +360,30 @@ function SearchPeople({ allowedBlocks }) {
   const paidCount = (filteredData || []).filter(r => r.has_transaction).length;
   const unpaidCount = (filteredData || []).filter(r => !r.has_transaction).length;
 
+  const searchExportColumns = [
+    { header: 'House', value: (r) => r.houseno || '' },
+    { header: 'Name', value: (r) => r.name || '' },
+    { header: 'Contact', value: (r) => r.contact || '' },
+    { header: 'Block', value: (r) => blockLabel(r.block) || r.block || '' },
+    { header: 'Year', value: (r) => r.year || '' },
+    { header: 'Amount Paid Last Year', value: (r) => Number(Number(r.amountPaidLastYear || 0).toFixed(2)) },
+    { header: 'Amount Paid This Year', value: (r) => Number(Number(r.totalAmount || 0).toFixed(2)) },
+    { header: 'Payment Mode', value: (r) => r.paymentMode || '' },
+    { header: 'Transaction Reference', value: (r) => r.transactionReference || '' },
+    { header: 'Bank Name', value: (r) => r.bankName || '' },
+    {
+      header: 'Transaction Date',
+      value: (r) => {
+        const raw = r.transactionDated || r.createdat;
+        if (!raw) return '';
+        const d = new Date(raw);
+        return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB');
+      },
+    },
+    { header: 'Status', value: (r) => statusLabel(r) },
+    { header: 'Reference Receipt', value: (r) => r.referenceReceiptNo || '' },
+  ];
+
   return (
     <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
       <PageLoader visible={pageLoading} />
@@ -619,10 +644,18 @@ function SearchPeople({ allowedBlocks }) {
                       : 'Houses in your assigned blocks.'}
                 </p>
               </div>
-              <div className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-semibold text-blue-700">
-                {paymentModeFilter
-                  ? `Total ${paymentModeFilter} ₹${totalAmount.toFixed(2)}`
-                  : `Total collected ₹${totalAmount.toFixed(2)}`}
+              <div className="flex flex-wrap items-center gap-2">
+                <ExportButtons
+                  records={filteredData}
+                  columns={searchExportColumns}
+                  filename="search-results"
+                  sheetName="Search results"
+                />
+                <div className="rounded-full bg-blue-50 px-4 py-1.5 text-sm font-semibold text-blue-700">
+                  {paymentModeFilter
+                    ? `Total ${paymentModeFilter} ₹${totalAmount.toFixed(2)}`
+                    : `Total collected ₹${totalAmount.toFixed(2)}`}
+                </div>
               </div>
             </div>
 
