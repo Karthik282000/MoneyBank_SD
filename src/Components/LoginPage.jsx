@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from './Constants.jsx';
+import PageLoader from './PageLoader.jsx';
 import {
   LOGIN_BLOCK_OPTIONS,
   FORM_BLOCK_OPTIONS,
@@ -250,6 +251,7 @@ export default function LoginPage({ onLogin }) {
 
   return (
   <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden px-4 py-8">
+    <PageLoader visible={loading} />
 
     {/* Ambient animated glow blobs */}
     <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-400/25 blur-3xl animate-floatBlob" />

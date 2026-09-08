@@ -4,6 +4,7 @@ import axios from 'axios';
 import './FormComponents.css';
 import { API_BASE_URL } from './Constants.jsx';
 import { FORM_BLOCK_OPTIONS, isOutsideBlock, blockLabel } from './blockAccess.js';
+import PageLoader from './PageLoader.jsx';
 
 // ...numberToWords and buildReceiptData remain unchanged...
 
@@ -124,6 +125,7 @@ function FormComponent({ allowedBlocks }) {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const [config, setConfig] = useState({});
 
   const dropdownRef = useRef(null);
@@ -202,13 +204,17 @@ function FormComponent({ allowedBlocks }) {
 
   // 🚀 INITIAL LOAD ONLY — no fetchFinancialSummary() here (needs a houseNo)
   useEffect(() => {
-    fetchFinancialYear();
-    fetchData();
-    fetchConfig();
+    let cancelled = false;
+    setPageLoading(true);
+    const tasks = [fetchFinancialYear(), fetchData(), fetchConfig()];
     // Don't overwrite a due-completion receipt number with the next-seq preview
     if (!location.state?.completeDue) {
-      fetchNextReceiptNo();
+      tasks.push(fetchNextReceiptNo());
     }
+    Promise.all(tasks).finally(() => {
+      if (!cancelled) setPageLoading(false);
+    });
+    return () => { cancelled = true; };
     // eslint-disable-next-line
   }, [allowedBlocks]);
 
@@ -824,6 +830,7 @@ function FormComponent({ allowedBlocks }) {
 
   return (
     <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
+      <PageLoader visible={pageLoading} />
 
       {/* Ambient animated glow blobs */}
       <div className="pointer-events-none absolute -top-24 right-10 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />

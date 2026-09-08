@@ -12,6 +12,7 @@ import AdminConfig from "./Components/AdminConfig.jsx";
 import DashboardLayout from "./Layout/DashboardLayout.jsx";
 import { API_BASE_URL } from './Components/Constants.jsx';
 import { withDefaultOutsideAccess } from './Components/blockAccess.js';
+import PageLoader from './Components/PageLoader.jsx';
 
 // Normalize allowed_blocks into a clean JS array regardless of how it arrives:
 //   ['A','B']  |  '["A","B"]'  |  '{"A","B"}'  |  '{A,B}'  |  'A,B'
@@ -107,8 +108,8 @@ function App() {
 
   if (!authChecked) {
     return (
-      <div className="App min-h-screen flex items-center justify-center">
-        <span className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="App min-h-screen">
+        <PageLoader visible />
       </div>
     );
   }

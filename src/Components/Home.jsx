@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -7,6 +7,7 @@ import {
 import './Home.css';
 import { API_BASE_URL } from './Constants.jsx';
 import { blockLabel, blockPhrase, isOutsideBlock, outsideRowClass } from './blockAccess.js';
+import PageLoader from './PageLoader.jsx';
 
 function amountToWords(num) {
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
@@ -278,6 +279,8 @@ function Home({ allowedBlocks = [], user = '' }) {
   });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  const [pageLoading, setPageLoading] = useState(true);
+  const bootstrappedRef = useRef(false);
 
   // Open a receipt using a freshly rebuilt SVG from the server (includes
   // Mahastmi Bhog line + DUE stamp), instead of a possibly stale stored image.
@@ -367,7 +370,7 @@ function Home({ allowedBlocks = [], user = '' }) {
   }, [allowedBlocks]);
 
   const fetchDashboardData = useCallback(() => {
-    axios.post(`${API_BASE_URL}/api/dashboard/summary`, {
+    return axios.post(`${API_BASE_URL}/api/dashboard/summary`, {
       allowedBlocks: allowedBlocks.length ? allowedBlocks : ['ALLBLOCKS'],
       houseScope,
       addedByEmail: user || sessionStorage.getItem('user') || '',
@@ -402,9 +405,21 @@ function Home({ allowedBlocks = [], user = '' }) {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-    fetchReceipts();
-    fetchConfig();
+    let cancelled = false;
+    const isFirstLoad = !bootstrappedRef.current;
+    if (isFirstLoad) setPageLoading(true);
+
+    Promise.all([
+      fetchDashboardData(),
+      fetchReceipts(),
+      fetchConfig(),
+    ]).finally(() => {
+      if (cancelled) return;
+      bootstrappedRef.current = true;
+      setPageLoading(false);
+    });
+
+    return () => { cancelled = true; };
   }, [fetchDashboardData, fetchReceipts, allowedBlocks]);
 
   // Send the collector to the Pay Subscription form with this due entry
@@ -454,6 +469,7 @@ function Home({ allowedBlocks = [], user = '' }) {
 
   return (
     <div className="relative w-full min-h-full min-w-0 p-3 sm:p-5 md:p-8 overflow-x-hidden">
+      <PageLoader visible={pageLoading} />
 
       {/* Ambient animated glow blobs */}
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />
@@ -461,7 +477,7 @@ function Home({ allowedBlocks = [], user = '' }) {
 
       {/* HEADER */}
       <div className="relative mb-6 sm:mb-10 text-center px-1">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab Committee LakeGardens</p>
+        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab Committee</p>
         <h2 className="mt-2 text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight neon-text">
           Dashboard Overview
         </h2>

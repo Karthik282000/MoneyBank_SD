@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { API_BASE_URL } from "./Constants";
 import { FiUser, FiUsers, FiBriefcase, FiSettings, FiSave } from "react-icons/fi";
+import PageLoader from "./PageLoader.jsx";
 
 function AdminConfig() {
   const [form, setForm] = useState({
@@ -10,12 +11,14 @@ function AdminConfig() {
     secretary2: "",
     treasurer: ""
   });
+  const [pageLoading, setPageLoading] = useState(true);
 
   // Load existing values
   useEffect(() => {
     axios.get(`${API_BASE_URL}/api/receipt-config`)
       .then(res => setForm(res.data))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPageLoading(false));
   }, []);
 
   const handleChange = (field, value) => {
@@ -29,6 +32,7 @@ function AdminConfig() {
 
   return (
     <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
+      <PageLoader visible={pageLoading} />
 
       {/* Ambient animated glow blobs */}
       <div className="pointer-events-none absolute -top-24 right-10 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />

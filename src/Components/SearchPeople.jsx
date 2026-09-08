@@ -3,6 +3,7 @@ import axios from 'axios';
 import './SearchPeople.css';
 import { API_BASE_URL } from './Constants.jsx';
 import { OUTSIDE_BLOCK, blockLabel, blockPhrase, isOutsideBlock, outsideRowClass } from './blockAccess.js';
+import PageLoader from './PageLoader.jsx';
 
 function extractYear(value) {
   if (value == null || value === '') return null;
@@ -120,6 +121,7 @@ function SearchPeople({ allowedBlocks }) {
   const [availableBlocks, setAvailableBlocks] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -178,7 +180,12 @@ function SearchPeople({ allowedBlocks }) {
   }, [allowedBlocks]);
 
   useEffect(() => {
-    fetchAllData();
+    let cancelled = false;
+    setPageLoading(true);
+    fetchAllData().finally(() => {
+      if (!cancelled) setPageLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [fetchAllData]);
 
   const updateSuggestions = (field, value) => {
@@ -354,6 +361,7 @@ function SearchPeople({ allowedBlocks }) {
 
   return (
     <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
+      <PageLoader visible={pageLoading} />
 
       <div className="pointer-events-none absolute -top-24 left-10 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />
       <div className="pointer-events-none absolute bottom-0 -right-24 h-72 w-72 rounded-full bg-indigo-400/20 blur-3xl animate-floatBlob" style={{ animationDelay: '4s' }} />

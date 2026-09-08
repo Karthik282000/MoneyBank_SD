@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { API_BASE_URL } from './Constants.jsx';
 import { FORM_BLOCK_OPTIONS, blockLabel, blockPhrase } from './blockAccess.js';
+import PageLoader from './PageLoader.jsx';
 
 const BLOCK_COLORS = {
   A: '#2563eb',
@@ -349,6 +350,7 @@ function CollectorTransactionsPanel({ collector, viewerEmail }) {
 
   return (
     <div className="glass-card overflow-hidden">
+      <PageLoader visible={loading} />
       <div className="px-5 py-4 border-b border-slate-100">
         <h3 className="text-lg font-semibold text-slate-800">Your collected transactions</h3>
         <p className="text-xs text-slate-500 mt-0.5">Every collected or completed receipt recorded under this login.</p>
@@ -473,6 +475,7 @@ export default function IndividualCollection({ user }) {
 
   return (
     <div className="relative w-full min-h-full p-4 md:p-8 overflow-hidden">
+      <PageLoader visible={loading} />
       <div className="pointer-events-none absolute -top-24 left-10 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-floatBlob" />
       <div className="pointer-events-none absolute bottom-0 -right-24 h-72 w-72 rounded-full bg-indigo-400/20 blur-3xl animate-floatBlob" style={{ animationDelay: '4s' }} />
 
