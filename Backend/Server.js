@@ -1188,18 +1188,26 @@ app.post('/api/save-transaction', async (req, res) => {
     );
     let subscriberId;
     if (subRes.rows.length === 0) {
-      subscriberId = await nextSubscriberId(client);
       const insertRes = await client.query(
-        `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, added_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active', 0, $7, $8) RETURNING subscriber_id`,
-        [subscriberId, houseNo, name, contact, email || null, block, receiptStatus || 'due', collectedBy]
+        `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, added_by)
+         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6, $7) RETURNING subscriber_id`,
+        [houseNo, name, contact, email || null, block, receiptStatus || 'due', collectedBy]
       );
       subscriberId = insertRes.rows[0].subscriber_id;
     } else {
       subscriberId = subRes.rows[0].subscriber_id;
       await client.query(
-        `UPDATE CollectionDetails SET contact = $1, email = $2, block = $3, receiptstatus = $4 WHERE subscriber_id = $5`,
-        [contact, email || null, block, receiptStatus || 'due', subscriberId]
+        `UPDATE CollectionDetails
+         SET contact = $1,
+             email = $2,
+             block = $3,
+             receiptstatus = $4,
+             added_by = CASE
+               WHEN NULLIF(TRIM(COALESCE(added_by, '')), '') IS NULL THEN $6
+               ELSE added_by
+             END
+         WHERE subscriber_id = $5`,
+        [contact, email || null, block, receiptStatus || 'due', subscriberId, collectedBy]
       );
     }
     let subscriptionRes = await client.query(
@@ -1326,12 +1334,12 @@ app.post('/api/create-new-house', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const subscriberId = await nextSubscriberId(client);
-    await client.query(
-      `INSERT INTO CollectionDetails (subscriber_id, houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber, added_by)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10)`,
-      [subscriberId, houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '', collectedBy]
+    const insertHouse = await client.query(
+      `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber, added_by)
+       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9) RETURNING subscriber_id`,
+      [houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '', collectedBy]
     );
+    const subscriberId = insertHouse.rows[0].subscriber_id;
     let subRes = await client.query(
       'SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1 AND yearofsubscription = $2',
       [subscriberId, yearOfPayment]
