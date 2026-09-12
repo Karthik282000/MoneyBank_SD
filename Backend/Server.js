@@ -393,6 +393,74 @@ async function nextSubscriberId(client) {
   return res.rows[0].next_id;
 }
 
+let subscriberIdColumnMode = null;
+
+async function getSubscriberIdColumnMode(client) {
+  if (subscriberIdColumnMode) return subscriberIdColumnMode;
+  const res = await client.query(`
+    SELECT a.attidentity AS identity,
+           pg_get_expr(ad.adbin, ad.adrelid) AS column_default
+    FROM pg_attribute a
+    JOIN pg_class c ON c.oid = a.attrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+      AND lower(c.relname) = 'collectiondetails'
+      AND a.attname = 'subscriber_id'
+      AND NOT a.attisdropped
+    LIMIT 1
+  `);
+  const row = res.rows[0] || {};
+  const identity = String(row.identity || '');
+  const def = String(row.column_default || '');
+  subscriberIdColumnMode =
+    identity === 'a' || identity === 'd' || /nextval\(/i.test(def)
+      ? 'generated'
+      : 'manual';
+  return subscriberIdColumnMode;
+}
+
+async function insertCollectionDetails(client, row) {
+  const includePrev = Object.prototype.hasOwnProperty.call(row, 'previousYearReceiptNumber');
+  const generated = (await getSubscriberIdColumnMode(client)) === 'generated';
+  const params = generated
+    ? []
+    : [await nextSubscriberId(client)];
+  params.push(
+    row.houseNo,
+    row.name,
+    row.contact,
+    row.email || null,
+    row.block,
+    row.amountPaidLastYear || 0,
+    row.receiptStatus || 'due'
+  );
+  if (includePrev) params.push(row.previousYearReceiptNumber || '');
+  params.push(row.addedBy);
+
+  const cols = [
+    ...(generated ? [] : ['subscriber_id']),
+    'houseno',
+    'name',
+    'contact',
+    'email',
+    'block',
+    'state',
+    'amountpaidlastyear',
+    'receiptstatus',
+    ...(includePrev ? ['previousyearreceiptnumber'] : []),
+    'added_by',
+  ];
+  let p = 0;
+  const placeholders = cols.map((col) => (col === 'state' ? `'active'` : `$${++p}`)).join(', ');
+  const insertRes = await client.query(
+    `INSERT INTO CollectionDetails (${cols.join(', ')}) VALUES (${placeholders}) RETURNING subscriber_id`,
+    params
+  );
+  return insertRes.rows[0].subscriber_id;
+}
+
 async function generateReceiptNo(client) {
   const res = await client.query(`SELECT nextval('receipt_seq') as seq`);
   const nextNum = res.rows[0].seq;
@@ -1188,12 +1256,16 @@ app.post('/api/save-transaction', async (req, res) => {
     );
     let subscriberId;
     if (subRes.rows.length === 0) {
-      const insertRes = await client.query(
-        `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, added_by)
-         VALUES ($1, $2, $3, $4, $5, 'active', 0, $6, $7) RETURNING subscriber_id`,
-        [houseNo, name, contact, email || null, block, receiptStatus || 'due', collectedBy]
-      );
-      subscriberId = insertRes.rows[0].subscriber_id;
+      subscriberId = await insertCollectionDetails(client, {
+        houseNo,
+        name,
+        contact,
+        email,
+        block,
+        amountPaidLastYear: 0,
+        receiptStatus: receiptStatus || 'due',
+        addedBy: collectedBy,
+      });
     } else {
       subscriberId = subRes.rows[0].subscriber_id;
       await client.query(
@@ -1334,12 +1406,17 @@ app.post('/api/create-new-house', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const insertHouse = await client.query(
-      `INSERT INTO CollectionDetails (houseno, name, contact, email, block, state, amountpaidlastyear, receiptstatus, previousyearreceiptnumber, added_by)
-       VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, $9) RETURNING subscriber_id`,
-      [houseNo, name, contact, email, block, amountPaidLastYear || 0, receiptStatus || 'due', previousYearReceiptNumber || '', collectedBy]
-    );
-    const subscriberId = insertHouse.rows[0].subscriber_id;
+    const subscriberId = await insertCollectionDetails(client, {
+      houseNo,
+      name,
+      contact,
+      email,
+      block,
+      amountPaidLastYear: amountPaidLastYear || 0,
+      receiptStatus: receiptStatus || 'due',
+      previousYearReceiptNumber: previousYearReceiptNumber || '',
+      addedBy: collectedBy,
+    });
     let subRes = await client.query(
       'SELECT subscriptionid FROM SubscriptionDetails WHERE subscriberid = $1 AND yearofsubscription = $2',
       [subscriberId, yearOfPayment]
@@ -2746,40 +2823,53 @@ app.get('/api/receipts', async (req, res) => {
     const scoped =
       Array.isArray(allowedBlocks) && allowedBlocks.length > 0 && !allowedBlocks.includes('ALLBLOCKS');
 
-    let query = `
-      SELECT 
-        r.receipt_no,
-        r.houseno,
-        r.name,
-        r.amount,
-        r.created_at,
-        r.receipt_html,
-        r.receipt_image_url,
-        r.receipt_view_url,
-        r.year_of_payment,
-        r.payment_mode,
-        COALESCE(NULLIF(TRIM(c.email), ''), r.email) AS email,
-        c.contact,
-        r.president,
-        r.secretary1,
-        r.secretary2,
-        r.treasurer,
-        r.bhog,
-        r.status,
-        COALESCE(NULLIF(TRIM(t.reference_receipt_no), ''), r.reference_receipt_no) AS reference_receipt_no,
-        c.block
-      FROM Receipts r
-      LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no`;
     const values = [];
+    let collectionJoin;
     if (scoped) {
-      query += ` JOIN CollectionDetails c ON c.houseno = r.houseno AND c.block = ANY($1)`;
+      collectionJoin = `JOIN CollectionDetails c
+        ON TRIM(c.houseno) = TRIM(r.houseno)
+       AND TRIM(c.name) = TRIM(r.name)
+       AND LOWER(COALESCE(c.state, '')) = 'active'
+       AND c.block = ANY($1)`;
       values.push(allowedBlocks);
     } else {
-      query += ` LEFT JOIN CollectionDetails c ON c.houseno = r.houseno AND c.name = r.name AND c.state = 'active'`;
+      collectionJoin = `LEFT JOIN CollectionDetails c
+        ON TRIM(c.houseno) = TRIM(r.houseno)
+       AND TRIM(c.name) = TRIM(r.name)
+       AND LOWER(COALESCE(c.state, '')) = 'active'`;
     }
-    query += ` ORDER BY r.created_at DESC`;
 
-    const result = await pool.query(query, values);
+    const result = await pool.query(
+      `SELECT * FROM (
+         SELECT DISTINCT ON (r.receipt_no)
+           r.receipt_no,
+           r.houseno,
+           r.name,
+           r.amount,
+           r.created_at,
+           r.receipt_html,
+           r.receipt_image_url,
+           r.receipt_view_url,
+           r.year_of_payment,
+           r.payment_mode,
+           COALESCE(NULLIF(TRIM(c.email), ''), r.email) AS email,
+           c.contact,
+           r.president,
+           r.secretary1,
+           r.secretary2,
+           r.treasurer,
+           r.bhog,
+           r.status,
+           COALESCE(NULLIF(TRIM(t.reference_receipt_no), ''), r.reference_receipt_no) AS reference_receipt_no,
+           c.block
+         FROM Receipts r
+         LEFT JOIN TransactionalDetails t ON t.receipt_no = r.receipt_no
+         ${collectionJoin}
+         ORDER BY r.receipt_no, r.created_at DESC
+       ) receipts
+       ORDER BY created_at DESC`,
+      values
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching receipts:', err);
