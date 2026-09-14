@@ -273,6 +273,8 @@ function Home({ allowedBlocks = [], user = '' }) {
   const [houseScope, setHouseScope] = useState('all');
   const [editReceipt, setEditReceipt] = useState(null);
   const [editForm, setEditForm] = useState({
+    name: '',
+    houseNo: '',
     referenceReceiptNo: '',
     contact: '',
     email: '',
@@ -300,6 +302,8 @@ function Home({ allowedBlocks = [], user = '' }) {
     setEditError('');
     setEditReceipt(receipt);
     setEditForm({
+      name: receipt.name || '',
+      houseNo: receipt.houseno || '',
       referenceReceiptNo: receipt.reference_receipt_no || '',
       contact: receipt.contact || '',
       email: receipt.email || '',
@@ -324,6 +328,8 @@ function Home({ allowedBlocks = [], user = '' }) {
     try {
       const res = await axios.post(`${API_BASE_URL}/api/receipts/update-details`, {
         receiptNo: editReceipt.receipt_no,
+        name: editForm.name,
+        houseNo: editForm.houseNo,
         referenceReceiptNo: editForm.referenceReceiptNo,
         contact: editForm.contact,
         email: editForm.email,
@@ -1151,8 +1157,30 @@ function Home({ allowedBlocks = [], user = '' }) {
             </div>
             <form onSubmit={submitEditReceipt} className="p-4 sm:p-6 space-y-4 overflow-auto">
               <p className="text-xs text-slate-500">
-                Fill in a value to add or change it. Leave a field blank to keep whatever is already stored.
+                Change any field below. Leave a field blank to keep whatever is already stored.
               </p>
+              <div className="field">
+                <label className="field-label" htmlFor="edit-name">Name</label>
+                <input
+                  id="edit-name"
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="Subscriber name"
+                  className="input-neon"
+                />
+              </div>
+              <div className="field">
+                <label className="field-label" htmlFor="edit-house-no">House No</label>
+                <input
+                  id="edit-house-no"
+                  type="text"
+                  value={editForm.houseNo}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, houseNo: e.target.value }))}
+                  placeholder="House number"
+                  className="input-neon"
+                />
+              </div>
               <div className="field">
                 <label className="field-label" htmlFor="edit-ref-receipt">Reference receipt number</label>
                 <input
