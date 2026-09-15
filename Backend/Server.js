@@ -2694,8 +2694,8 @@ app.get('/api/receipt-svg/:receiptNo', async (req, res) => {
 });
 
 
-// Update name / house no / reference receipt no / customer contact / customer email
-// on an existing receipt. Empty submitted fields are ignored so existing DB values are kept.
+// Update name / reference receipt no / customer contact / customer email
+// on an existing receipt. House no is not editable. Empty fields keep existing DB values.
 app.post('/api/receipts/update-details', async (req, res) => {
   const receiptNo = String(req.body?.receiptNo ?? '').trim();
   if (!receiptNo) {
@@ -2703,12 +2703,11 @@ app.post('/api/receipts/update-details', async (req, res) => {
   }
 
   const nameVal = blankToNull(req.body?.name);
-  const houseNoVal = blankToNull(req.body?.houseNo ?? req.body?.houseno);
   const refNo = blankToNull(req.body?.referenceReceiptNo);
   const contactVal = blankToNull(req.body?.contact);
   const emailVal = blankToNull(req.body?.email);
 
-  if (!nameVal && !houseNoVal && !refNo && !contactVal && !emailVal) {
+  if (!nameVal && !refNo && !contactVal && !emailVal) {
     return res.json({ success: true, message: 'No changes' });
   }
 
@@ -2752,11 +2751,10 @@ app.post('/api/receipts/update-details', async (req, res) => {
     await client.query(
       `UPDATE Receipts
        SET name = COALESCE($1, name),
-           houseno = COALESCE($2, houseno),
-           reference_receipt_no = COALESCE($3, reference_receipt_no),
-           email = COALESCE($4, email)
-       WHERE receipt_no = $5`,
-      [nameVal, houseNoVal, refNo, emailVal, receiptNo]
+           reference_receipt_no = COALESCE($2, reference_receipt_no),
+           email = COALESCE($3, email)
+       WHERE receipt_no = $4`,
+      [nameVal, refNo, emailVal, receiptNo]
     );
 
     await client.query(
@@ -2766,15 +2764,14 @@ app.post('/api/receipts/update-details', async (req, res) => {
       [refNo, receiptNo]
     );
 
-    if (subscriberId && (nameVal || houseNoVal || contactVal || emailVal)) {
+    if (subscriberId && (nameVal || contactVal || emailVal)) {
       await client.query(
         `UPDATE CollectionDetails
          SET name = COALESCE($1, name),
-             houseno = COALESCE($2, houseno),
-             contact = COALESCE($3, contact),
-             email = COALESCE($4, email)
-         WHERE subscriber_id = $5`,
-        [nameVal, houseNoVal, contactVal, emailVal, subscriberId]
+             contact = COALESCE($2, contact),
+             email = COALESCE($3, email)
+         WHERE subscriber_id = $4`,
+        [nameVal, contactVal, emailVal, subscriberId]
       );
     }
 
@@ -2783,10 +2780,9 @@ app.post('/api/receipts/update-details', async (req, res) => {
       await client.query(
         `UPDATE ReceiptMapping
          SET reference_receipt_no = COALESCE($1, reference_receipt_no),
-             name = COALESCE($2, name),
-             houseno = COALESCE($3, houseno)
-         WHERE receipt_no = $4`,
-        [refNo, nameVal, houseNoVal, receiptNo]
+             name = COALESCE($2, name)
+         WHERE receipt_no = $3`,
+        [refNo, nameVal, receiptNo]
       );
       await client.query('RELEASE SAVEPOINT receipt_mapping');
     } catch {
@@ -2798,7 +2794,7 @@ app.post('/api/receipts/update-details', async (req, res) => {
       success: true,
       receiptNo: row.receipt_no,
       name: nameVal || row.name,
-      houseno: houseNoVal || row.houseno,
+      houseno: row.houseno,
       amount: row.amount,
       yearOfPayment: row.year_of_payment,
       paymentMode: row.payment_mode,

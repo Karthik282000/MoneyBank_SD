@@ -274,7 +274,6 @@ function Home({ allowedBlocks = [], user = '' }) {
   const [editReceipt, setEditReceipt] = useState(null);
   const [editForm, setEditForm] = useState({
     name: '',
-    houseNo: '',
     referenceReceiptNo: '',
     contact: '',
     email: '',
@@ -303,7 +302,6 @@ function Home({ allowedBlocks = [], user = '' }) {
     setEditReceipt(receipt);
     setEditForm({
       name: receipt.name || '',
-      houseNo: receipt.houseno || '',
       referenceReceiptNo: receipt.reference_receipt_no || '',
       contact: receipt.contact || '',
       email: receipt.email || '',
@@ -329,7 +327,6 @@ function Home({ allowedBlocks = [], user = '' }) {
       const res = await axios.post(`${API_BASE_URL}/api/receipts/update-details`, {
         receiptNo: editReceipt.receipt_no,
         name: editForm.name,
-        houseNo: editForm.houseNo,
         referenceReceiptNo: editForm.referenceReceiptNo,
         contact: editForm.contact,
         email: editForm.email,
@@ -483,7 +480,7 @@ function Home({ allowedBlocks = [], user = '' }) {
 
       {/* HEADER */}
       <div className="relative mb-6 sm:mb-10 text-center px-1">
-        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab Committee</p>
+        <p className="text-[10px] sm:text-xs uppercase tracking-[0.25em] sm:tracking-[0.4em] text-blue-500/80">Sarbojanin Durgotsab Committee Lakegardens</p>
         <h2 className="mt-2 text-2xl sm:text-3xl md:text-5xl font-bold tracking-tight neon-text">
           Dashboard Overview
         </h2>
@@ -1157,7 +1154,7 @@ function Home({ allowedBlocks = [], user = '' }) {
             </div>
             <form onSubmit={submitEditReceipt} className="p-4 sm:p-6 space-y-4 overflow-auto">
               <p className="text-xs text-slate-500">
-                Change any field below. Leave a field blank to keep whatever is already stored.
+                You can change the name for this house, plus reference receipt, contact, and email. House number cannot be changed.
               </p>
               <div className="field">
                 <label className="field-label" htmlFor="edit-name">Name</label>
@@ -1166,19 +1163,17 @@ function Home({ allowedBlocks = [], user = '' }) {
                   type="text"
                   value={editForm.name}
                   onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Subscriber name"
+                  placeholder="Name for this house"
                   className="input-neon"
                 />
               </div>
               <div className="field">
-                <label className="field-label" htmlFor="edit-house-no">House No</label>
+                <label className="field-label">House No</label>
                 <input
-                  id="edit-house-no"
                   type="text"
-                  value={editForm.houseNo}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, houseNo: e.target.value }))}
-                  placeholder="House number"
-                  className="input-neon"
+                  value={editReceipt.houseno || ''}
+                  readOnly
+                  className="input-neon bg-slate-50 text-slate-500 cursor-not-allowed"
                 />
               </div>
               <div className="field">
